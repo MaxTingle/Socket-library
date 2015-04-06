@@ -1,0 +1,5 @@
+Communications lib v1:
+
+This is the most basic implementation of a Server and Client I could come up with.
+The client can send messages to the server, the server can reply to them.
+All data is plaintext and the system isn't object orientated at all.

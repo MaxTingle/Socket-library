@@ -1,0 +1,5 @@
+Communications lib v3:
+
+Attempted and failed to fix the socket closed bug, instead wrote a huge comment detailing my horrible journey.
+Refactored into an actual lib, no longer dependant on Main at all.
+Refactored main to use it as a lib.

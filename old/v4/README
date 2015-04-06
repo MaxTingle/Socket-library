@@ -1,0 +1,13 @@
+Communications lib v4:
+
+Another attempted fix failed for socket closed, I did not succeeed.
+Properly namespaced all the classes
+Added more events to listen for
+Added magic checking
+Add authentication
+Removed some relying on main that I missed in v3
+Logging done by the client is now more obvious on if it's a server client or actual client
+Added success and previous message to message class
+Added the ability to reply to a message
+Changed namespace to be closed to my domain
+Added server options and lots of control over the server

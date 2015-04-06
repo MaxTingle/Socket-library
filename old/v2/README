@@ -1,0 +1,8 @@
+Communications lib v2:
+
+This version is object orientated although not appropriate for a proper lib as it is made for testing and relies on Main too much.
+In this version messages are JSON encoded and all messages sent are instances of the Message class.
+The main problem with this version is that the stop function of the server has a nasty bit of exception checking where
+the exception socket closed (Thrown by the accept method while blocking) is ignored. This is because closing a listening ServerSocket
+can while the accept method is still blocking will throw the exception. The only fix that I'm aware of is to use ServerSocketChannel
+which would require too much rewrite.
