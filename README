@@ -1,0 +1,60 @@
+This library was made for EasyTV in a day. There may be undiscovered bugs and design flaws with it, but I'll fix them as I find them.
+
+The library is designed to be versatile so it can be used in conjunction with other languages and systems of different
+setups, so long as they follow the authentication protocol it uses.
+
+The folder old contains the versions I went through, as I've found building something large straight away is problematic, I built this
+in sections as such, improving on it as I went, so I had time to think about everything that it would need.
+
+Debug categories:
+The debug categories appear before a debug message and wrapped in square braces, the following used are:
+[Server] - The server class, handling the clients and such
+[Server-Client] - A client registered by the server, the servers view a client
+[Client] - A client connecting to the server, the clients view of.. the client.
+
+EG:
+I am testing a Server and a client in the same project. I start my client and I get some [Client] logs,
+the server is scanning and does some [Server] logs, then when the server sees the client I see some [Server-Client] logs,
+these would be the client contacting the server and the server's view of it
+
+The communication protocol is as so (If used):
+All messages are JSON encoded and follow this format
+{
+    request: Error message or what the request is about
+    params: An array of data for use by the request
+    success: Should only be used by the server to tell you whether the last request as a success
+    responseTo: The previous message this is a reply to (Not always set)
+}
+
+There are a could reserved request keywords which are used by the authentication system, because I had to using something..
+they are: __SEND_MAGIC__, __SEND_CREDENTIALS__, __AUTHENTICATED__, __MAGIC__, __CREDENTIALS__
+
+The authentication works as so:
+connection to server socket
+Client auth state set to CONNECTED
+(If useMagic true on server)
+    Client auth state set to AWAITING_MAGIC
+    Server sends __SEND_MAGIC__
+    Client responds with magic, identifies this by using the request __MAGIC__
+    Server validates magic, responds with success false and the error or success true and the next step's request
+(If useCredentials true on server)
+    Client auth state set to AWAITING_CREDENTIALS
+    Server sends __SEND_CREDENTIALS__
+    Client responds with associative array (Map in java) with username and password in, identifies this by using the request __CREDENTIALS__
+    Server validates credentials, responds with success false and the error or success true and the next step's request
+Server sends __AUTHENTICATED__
+Client auth state set to ACCEPTED
+
+An example transaction is:
+[Server-Client] Auth state changed from CONNECTED to AWAITING_MAGIC
+[Server-Client] Sending message {"request":"__SEND_MAGIC__"}
+[Client] Auth state changed from CONNECTED to AWAITING_MAGIC
+[Client] Sending message {"params":["testapplicationmagic"],"request":"__MAGIC__","responseTo":"{"request":"__SEND_MAGIC__"}"}
+[Server-Client] Auth state changed from AWAITING_MAGIC to AWAITING_CREDENTIALS
+[Server-Client] Sending message {"request":"__SEND_CREDENTIALS__","success":true,"responseTo":"{"params":["testapplicationmagic"],"request":"__MAGIC__","responseTo":"{"request":"__SEND_MAGIC__"}"}"}
+[Client] Received message {"request":"__SEND_CREDENTIALS__","success":true,"responseTo":"{"params":["testapplicationmagic"],"request":"__MAGIC__","responseTo":"{"request":"__SEND_MAGIC__"}"}"}
+[Client] Auth state changed from AWAITING_MAGIC to AWAITING_CREDENTIALS
+[Client] Sending message {"params":[{"password":"testpassword","username":"testuser"}],"request":"__CREDENTIALS__","responseTo":"{"request":"__SEND_CREDENTIALS__","success":true,"responseTo":"{"params":["testapplicationmagic"],"request":"__MAGIC__"}"}"}
+[Server-Client] Auth state changed from AWAITING_CREDENTIALS to ACCEPTED
+[Server-Client] Sending message {"request":"__AUTHENTICATED__","success":true,"responseTo":"{"params":[{"password":"testpassword","username":"testuser"}],"request":"__CREDENTIALS__","responseTo":"{"request":"__SEND_CREDENTIALS__","success":true}"}"}
+[Client] Auth state changed from AWAITING_CREDENTIALS to ACCEPTED
