@@ -58,3 +58,14 @@ An example transaction is:
 [Server-Client] Auth state changed from AWAITING_CREDENTIALS to ACCEPTED
 [Server-Client] Sending message {"request":"__AUTHENTICATED__","success":true,"responseTo":"{"params":[{"password":"testpassword","username":"testuser"}],"request":"__CREDENTIALS__","responseTo":"{"request":"__SEND_CREDENTIALS__","success":true}"}"}
 [Client] Auth state changed from AWAITING_CREDENTIALS to ACCEPTED
+
+The reply chain works like so:
+Client sends message to server with id
+	Generate id
+	Store messages as hashmap with id as key
+	Send id to to server
+Server sends message back to client, message has responseToId of the 1st message id
+	Server detects it got the message, adds it into received messages with id
+	Server loads the message that the incoming message is a response to
+	Server triggers reply methods on the message its a response to
+	Message respond method used, sets respondToId to its own id
