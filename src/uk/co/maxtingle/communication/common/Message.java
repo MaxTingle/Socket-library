@@ -2,16 +2,27 @@ package uk.co.maxtingle.communication.common;
 
 import com.google.gson.Gson;
 import uk.co.maxtingle.communication.client.Client;
+import uk.co.maxtingle.communication.common.events.MessageReceived;
+
+import java.math.BigInteger;
+import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Message
 {
-    private static final Gson _jsonParser = new Gson();
+    private static final Gson         _jsonParser = new Gson();
+    private static final SecureRandom _random     = new SecureRandom();
 
     public  Object[] params;
     public  String   request;
     public  Boolean  success;
+    private String   _id;
     private Client   _client; //needs to be private so not serialized
-    private Message  _responseTo; //the message this message is a response to
+    String   _responseToId; //the message this message is a response to
+    private Message  _responseToMessage;
+    private ArrayList<MessageReceived> _replyListeners = new ArrayList<MessageReceived>();
 
     public Message(String request) {
         this.request = request;
@@ -27,8 +38,44 @@ public class Message
         this.request = request;
     }
 
+    public String getId() {
+        return this._id;
+    }
+
+    public void generateId(Map<?, ?> usedKeys) throws Exception {
+        if(this._id != null) {
+            throw new Exception("Id already generated");
+        }
+
+        String generated = new BigInteger(130, Message._random).toString(32);
+        if(usedKeys.containsKey(generated)) {
+            this.generateId(usedKeys);
+        }
+        else {
+            this._id = generated;
+        }
+    }
+
+    public void onReply(MessageReceived listener) {
+        this._replyListeners.add(listener);
+    }
+
+    public void triggerReplyEvents(Message received) throws Exception {
+        for(MessageReceived event : this._replyListeners) {
+            event.onMessageReceived(this._client, received);
+        }
+    }
+
     public Message getResponseTo() {
-        return this._responseTo;
+        return this._responseToMessage;
+    }
+
+    public void loadResponseTo(HashMap<String, Message> sentMessages) throws Exception {
+        if(this._responseToMessage != null) {
+            throw new Exception("Response to message already loaded");
+        }
+
+        this._responseToMessage = sentMessages.get(this._responseToId);
     }
 
     public void respond(Message message) throws Exception {
@@ -36,7 +83,7 @@ public class Message
             throw new Exception("Message not from client, cannot respond.");
         }
 
-        message._responseTo = this;
+        message._responseToId = this._id;
         this._client.sendMessage(message);
     }
 
@@ -45,19 +92,13 @@ public class Message
     }
 
     public static Message fromJson(String json, Client client) {
-        return Message._fromJson(json, client, false);
-    }
-
-    private static Message _fromJson(String json, Client client, boolean isResponseToMessage) {
         SerializableMessage serializableMessage = Message._jsonParser.fromJson(json, SerializableMessage.class);
         Message message = new Message(serializableMessage.request);
         message.success = serializableMessage.success;
         message.params = serializableMessage.params;
         message._client = client;
-
-        if(!isResponseToMessage && serializableMessage.responseTo != null) { //only want to load one layer of response to
-            message._responseTo = Message._fromJson(serializableMessage.responseTo, client, true);
-        }
+        message._responseToId = serializableMessage.responseTo;
+        message._id = serializableMessage.id;
 
         return message;
     }

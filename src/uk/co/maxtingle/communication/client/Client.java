@@ -10,6 +10,7 @@ import uk.co.maxtingle.communication.server.ServerOptions;
 import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -28,8 +29,8 @@ public class Client
     private ArrayList<DisconnectListener> _disconnectListeners      = new ArrayList<DisconnectListener>();
     private ArrayList<AuthStateChanged>   _authStateListeners       = new ArrayList<AuthStateChanged>();
     private ArrayList<MessageReceived>    _messageReceivedListeners = new ArrayList<MessageReceived>();
-    private ArrayList<Message>            _receivedMessages         = new ArrayList<Message>();
-    private ArrayList<Message>            _sentMessages             = new ArrayList<Message>();
+    private HashMap<String, Message>      _receivedMessages         = new HashMap<String, Message>();
+    private HashMap<String, Message>      _sentMessages             = new HashMap<String, Message>();
     private AuthState                     _authState                = AuthState.CONNECTED;
 
     //auth details
@@ -39,7 +40,11 @@ public class Client
 
     //settings
     public boolean isRealClient = true; //if this is a server client or an actual client talking to a server
-    public boolean keepMessages = false;
+    public boolean keepMessages = true; //can disable this for memory usage but doing so will mean manual replies needed
+
+    public Client() {
+
+    }
 
     public Client(Socket socket) throws Exception {
         this(socket, null, null, null);
@@ -58,18 +63,34 @@ public class Client
         this._password = password;
         this._magic = sendMagic;
 
+        this.connect(socket);
+    }
+
+    public void connect(Socket socket) throws Exception {
+        if(this._socket != null) {
+            throw new Exception("Already connected");
+        }
+
         this._socket = socket;
         this._writer = new OutputStreamWriter(this._socket.getOutputStream());
         this._inputStream = this._socket.getInputStream();
         this._reader = new BufferedReader(new InputStreamReader(this._inputStream));
     }
 
-    public ArrayList<Message> getRecivedMessages() {
-        return this._receivedMessages;
+    public Collection<Message> getRecivedMessages() {
+        return this._receivedMessages.values();
     }
 
-    public ArrayList<Message> getSentMessages() {
-        return this._sentMessages;
+    public Collection<Message> getSentMessages() {
+        return this._sentMessages.values();
+    }
+
+    public Message getReceivedMessage(String id) {
+        return this._receivedMessages.get(id);
+    }
+
+    public Message getSentMessage(String id) {
+        return this._sentMessages.get(id);
     }
 
     public AuthState getAuthState() {
@@ -105,16 +126,16 @@ public class Client
         return this._inputStream.available() > 0;
     }
 
-    public void sendMessage(Message msg) throws IOException {
+    public void sendMessage(Message msg) throws Exception {
         if(!this.isReady()) {
             throw new IOException("Client not ready to send messages");
         }
         else if(this.keepMessages) {
-            this._sentMessages.add(msg);
+            msg.generateId(this._sentMessages); //generate an id for reply detection
+            this._sentMessages.put(msg.getId(), msg);
         }
 
-        Debugger.log(this._getDebuggerCategory(), "Sending message " + msg.request + " encoded to " + msg.toString());
-
+        Debugger.log(this._getDebuggerCategory(), "Sending message " + msg.toString());
         this._writer.write(msg.toString() + "\n");
         this._writer.flush();
     }
@@ -144,7 +165,6 @@ public class Client
 
                 try {
                     while (isReady()) {
-
                         if (!isMessageWaiting()) {
                             continue;
                         }
@@ -152,10 +172,14 @@ public class Client
                         String json = _reader.readLine();
                         Debugger.log(_getDebuggerCategory(), "Received message " + json);
                         Message reply = Message.fromJson(json, self);
-                        Debugger.log(_getDebuggerCategory(), "Received message text " + reply.request);
 
                         if (keepMessages) {
-                            _receivedMessages.add(reply);
+                            _receivedMessages.put(reply.getId(), reply);
+                            reply.loadResponseTo(_sentMessages);
+
+                            if(reply.getResponseTo() != null) {
+                                reply.getResponseTo().triggerReplyEvents(reply);
+                            }
                         }
 
                         if (isRealClient) { //to stop this modifying any server auth

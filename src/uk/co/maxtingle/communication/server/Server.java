@@ -126,7 +126,7 @@ public class Server
             return; //already started
         }
 
-        this._clientListenerThread = new Thread(new Runnable() //fuck everything about this exception handling
+        this._clientListenerThread = new Thread(new Runnable()
         {
             @Override
             public void run() {
@@ -195,12 +195,12 @@ public class Server
         }
 
         this._messageListenerThread = new Thread(new Runnable()
-        {//shall we implement delegates? Nah we've got inner classes, that's not at all like delegates, it's fine
+        {
             @Override
             public void run() {
                 Debugger.log("Server", "Listening for messages");
 
-                while (isReady()) { //can't use this to reference because this now refers to the runnable, fucking java
+                while (isReady()) {
                     try {
                         for(int i = _clients.size() - 1; i != -1; i--) { //will be dynamically removing from list
                             Client client = _clients.get(i);
@@ -224,8 +224,6 @@ public class Server
                                 }
                             }
                             else {
-                                Debugger.log("Server", "Received message " + message.request);
-
                                 for (MessageReceived listener : _messageReceivedListeners) {
                                     listener.onMessageReceived(client, message);
                                 }

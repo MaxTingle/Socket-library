@@ -23,4 +23,18 @@ public class Debugger
             _logger.log(category, msg);
         }
     }
+
+    public static void log(String category, Exception e) {
+        Debugger.log(category, e.toString());
+    }
+
+    public static void debug(String category, Exception e) {
+        String stackTrace = "";
+
+        for(StackTraceElement stack : e.getStackTrace()) {
+            stackTrace += "\n in " + stack.getClassName() + " ( " + stack.getFileName() + ") " + stack.getMethodName() + " @ " + stack.getLineNumber();
+        }
+
+        Debugger.log(category, e.toString() + " stack: " + stackTrace);
+    }
 }
