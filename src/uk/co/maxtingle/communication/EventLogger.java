@@ -1,5 +1,5 @@
 package uk.co.maxtingle.communication;
 
-interface EventLogger {
+public interface EventLogger {
     void log(String category, String msg);
 }
