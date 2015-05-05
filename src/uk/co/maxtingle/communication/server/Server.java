@@ -224,8 +224,13 @@ public class Server
                                 }
                             }
                             else {
-                                for (MessageReceived listener : _messageReceivedListeners) {
-                                    listener.onMessageReceived(client, message);
+                                try {
+                                    for (MessageReceived listener : _messageReceivedListeners) {
+                                        listener.onMessageReceived(client, message);
+                                    }
+                                }
+                                catch(Exception e) {
+                                    message.respond(new Message(false, e.toString()));
                                 }
                             }
                         }
