@@ -5,6 +5,10 @@ import uk.co.maxtingle.communication.client.AuthState;
 import uk.co.maxtingle.communication.client.Client;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
+import uk.co.maxtingle.communication.server.auth.BasicAuthHandler;
+import uk.co.maxtingle.communication.server.auth.IAuthHandler;
+import uk.co.maxtingle.communication.server.auth.ICredentialAuth;
+import uk.co.maxtingle.communication.server.auth.IMagicAuth;
 
 import java.net.ServerSocket;
 import java.util.ArrayList;
@@ -22,25 +26,22 @@ public class Server
     private ArrayList<MessageReceived> _messageReceivedListeners = new ArrayList<MessageReceived>();
 
     public Server() {
-        this._options = new ServerOptions()
-        {
-        };
+        this._options = new ServerOptions() {};
     }
 
     public Server(int serverPort) {
         this._options = new ServerOptions();
         this._options.port = serverPort;
+        this.setDefaultAuthHandler();
     }
 
     public Server(ServerOptions options) throws Exception {
-        if (options.useCredentials && options.authHandler == null) {
-            throw new Exception("Cannot use credentials without auth handler.");
-        }
-        else if (options.useMagic && (options.expectedMagic == null || options.expectedMagic.trim().equals(""))) {
+        if (options.useMagic && (options.expectedMagic == null || options.expectedMagic.trim().equals(""))) {
             throw new Exception("Cannot use expectedMagic without setting expected expectedMagic value");
         }
 
         this._options = options;
+        this.setDefaultAuthHandler();
     }
 
     public boolean isReady() {
@@ -53,6 +54,37 @@ public class Server
 
     public void onMessageReceived(MessageReceived listener) {
         this._messageReceivedListeners.add(listener);
+    }
+
+    public void setDefaultAuthHandler() {
+        this.setAuthHandler(new BasicAuthHandler());
+    }
+
+    public void setAuthHandler(final IAuthHandler handler) {
+        this._options.usedAuthHandler = handler;
+        this._options.magicAuthHandler = new IMagicAuth()
+        {
+            @Override
+            public boolean authMagic(String magic, Client client, Message message, ServerOptions options) throws Exception {
+                return handler.authMagic(magic, client, message, options);
+            }
+        };
+
+        this._options.credentialAuthHandler = new ICredentialAuth()
+        {
+            @Override
+            public boolean authCredentials(String username, String password, Client client, Message message, ServerOptions options) throws Exception {
+                return handler.authCredentials(username, password, client, message, options);
+            }
+        };
+    }
+
+    public void setMagicAuthHandler(final IMagicAuth handler) {
+        this._options.magicAuthHandler = handler;
+    }
+
+    public void setCredentialAuthHandler(final ICredentialAuth handler) {
+        this._options.credentialAuthHandler = handler;
     }
 
     public ArrayList<Client> getAcceptedClients() {
@@ -256,16 +288,18 @@ public class Server
                 //not sent a string
                 throw new Exception("Incorrect type of param");
             }
-            else if(!_options.expectedMagic.equals(message.params[0])) {
+            else if(_options.magicAuthHandler.authMagic((String)message.params[0], client, message, _options)) {
+                if(_options.useCredentials) { //stage 1 complete, ask for credentials now
+                    client.setAuthState(AuthState.AWAITING_CREDENTIALS);
+                    message.respond(new Message(true, ServerOptions.requestCredentialsString));
+                }
+                else { //expectedMagic only, they have passed auth
+                    client.setAuthState(AuthState.ACCEPTED);
+                    message.respond(new Message(true, ServerOptions.acceptedAuthString));
+                }
+            }
+            else {
                 throw new Exception("Incorrect magic");
-            }
-            else if(_options.useCredentials) { //stage 1 complete, ask for credentials now
-                client.setAuthState(AuthState.AWAITING_CREDENTIALS);
-                message.respond(new Message(true, ServerOptions.requestCredentialsString));
-            }
-            else { //expectedMagic only, they have passed auth
-                client.setAuthState(AuthState.ACCEPTED);
-                message.respond(new Message(true, ServerOptions.acceptedAuthString));
             }
         }
         else if(_options.useCredentials && client.getAuthState() == AuthState.AWAITING_CREDENTIALS) {
@@ -287,7 +321,7 @@ public class Server
                 throw new Exception("Invalid username and password type. params[0] must be an associative array (Map) with username and password in.");
             }
 
-            if(_options.authHandler.checkAuth(username, password, client, message)) {
+            if(_options.credentialAuthHandler.authCredentials(username, password, client, message, _options)) {
                 client.setAuthState(AuthState.ACCEPTED);
                 message.respond(new Message(true, ServerOptions.acceptedAuthString));
             }

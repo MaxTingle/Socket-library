@@ -7,7 +7,6 @@ import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 import uk.co.maxtingle.communication.server.Server;
 import uk.co.maxtingle.communication.server.ServerOptions;
-import uk.co.maxtingle.communication.server.events.AuthReceived;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -41,13 +40,8 @@ public class Main
         options.useMagic = true;
         options.useCredentials = true;
         options.expectedMagic = Main._magic;
-        options.authHandler = new AuthReceived()
-        {
-            @Override
-            public boolean checkAuth(String username, String password, Client client, Message message) throws Exception {
-                return Main._username.equals(username) && Main._password.equals(password);
-            }
-        };
+        options.expectedUsername = Main._username;
+        options.expectedPassword = Main._password;
 
         //server
         Main._server = new Server(options);

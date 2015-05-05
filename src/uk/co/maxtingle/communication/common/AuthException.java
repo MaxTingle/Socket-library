@@ -1,4 +1,4 @@
-package uk.co.maxtingle.communication.client;
+package uk.co.maxtingle.communication.common;
 
 public class AuthException extends Exception {
     public AuthException(String msg) {

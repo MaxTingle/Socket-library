@@ -3,6 +3,7 @@ package uk.co.maxtingle.communication.client;
 import uk.co.maxtingle.communication.Debugger;
 import uk.co.maxtingle.communication.client.events.AuthStateChanged;
 import uk.co.maxtingle.communication.client.events.DisconnectListener;
+import uk.co.maxtingle.communication.common.AuthException;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 import uk.co.maxtingle.communication.server.ServerOptions;
@@ -219,6 +220,10 @@ public class Client
                             listener.onMessageReceived(self, reply);
                         }
                     }
+                }
+                catch(AuthException e) {
+                    disconnect();
+                    Debugger.log(_getDebuggerCategory(), e.toString());
                 }
                 catch(Exception e) {
                     disconnect();

@@ -1,6 +1,8 @@
 package uk.co.maxtingle.communication.server;
 
-import uk.co.maxtingle.communication.server.events.AuthReceived;
+import uk.co.maxtingle.communication.server.auth.IAuthHandler;
+import uk.co.maxtingle.communication.server.auth.ICredentialAuth;
+import uk.co.maxtingle.communication.server.auth.IMagicAuth;
 
 public class ServerOptions
 {
@@ -20,11 +22,17 @@ public class ServerOptions
     public boolean useMagic = false;
 
     /** the expectedMagic to auth with */
-    public String expectedMagic;
+    public String expectedMagic = "";
+
+    /** the expected credentials to auth with */
+    public String expectedUsername = "";
+    public String expectedPassword = "";
 
     /** whether or not to require auth credentials */
     public boolean useCredentials = false;
 
-    /** The handler for auth things */
-    public AuthReceived authHandler;
+    /** Authenticators */
+    IAuthHandler    usedAuthHandler;
+    ICredentialAuth credentialAuthHandler;
+    IMagicAuth      magicAuthHandler;
 }
