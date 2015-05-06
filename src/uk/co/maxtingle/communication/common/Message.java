@@ -24,18 +24,30 @@ public class Message
     private Message  _responseToMessage;
     private ArrayList<MessageReceived> _replyListeners = new ArrayList<MessageReceived>();
 
+    /* Client making requests */
     public Message(String request) {
         this.request = request;
-    }
-
-    public Message(boolean success, String error) {
-        this.request = error;
-        this.success = success;
     }
 
     public Message(String request, Object[] params) {
         this.params = params;
         this.request = request;
+    }
+
+    /* Server responding */
+    public Message(boolean success, String error) {
+        this.request = error;
+        this.success = success;
+    }
+
+    public Message(boolean success, Object[] returnData) {
+        this(success, "", returnData);
+    }
+
+    public Message(boolean success, String responseText, Object[] returnData) {
+        this.params = returnData;
+        this.request = responseText;
+        this.success = success;
     }
 
     public String getId() {
