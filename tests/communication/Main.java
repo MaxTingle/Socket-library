@@ -70,7 +70,6 @@ public class Main
                 }).start();
             }
         });
-        Main._client.listenForReplies();
         Debugger.log("Client", "Type something in to send it into the big wide world! Type quit to exit.");
 
         //reading console input

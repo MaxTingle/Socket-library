@@ -1,4 +1,4 @@
-package replies;
+package disconnect;
 
 import uk.co.maxtingle.communication.Debugger;
 import uk.co.maxtingle.communication.client.AuthState;
@@ -22,19 +22,19 @@ public class Main
         Debugger.setDefaultLogger();
 
         //server
-        Main._server = new Server(Main._port);
-        Main._server.onMessageReceived(new MessageReceived()
+        Main._server = new Server(disconnect.Main._port);
+        disconnect.Main._server.onMessageReceived(new MessageReceived()
         {
             @Override
             public void onMessageReceived(final Client client, final Message msg) throws Exception {
                 msg.respond(new Message("yoyoyoyoyoyo"));
             }
         });
-        Main._server.start();
+        disconnect.Main._server.start();
 
         //client
-        Main._client = new Client();
-        Main._client.onAuthStateChange(new AuthStateChanged()
+        disconnect.Main._client = new Client();
+        disconnect.Main._client.onAuthStateChange(new AuthStateChanged()
         {
             @Override
             public void onAuthStateChanged(AuthState previous, AuthState newState, Client client) {
@@ -50,7 +50,7 @@ public class Main
                     });
 
                     try {
-                        Main._client.sendMessage(message);
+                        disconnect.Main._client.sendMessage(message);
                     }
                     catch (Exception e) {
                         Debugger.log("Client", e);
@@ -58,8 +58,24 @@ public class Main
                 }
             }
         });
-        Main._client.connect(new Socket(Main._address, Main._port));
+        disconnect.Main._client.connect(new Socket(disconnect.Main._address, disconnect.Main._port));
 
-        while(!Main._client.isStopped()) {} //to stop app closing
+        new Thread(new Runnable()
+        {
+            @Override
+            public void run() {
+                Debugger.log("Test", "Sleeping");
+                try {
+                    Thread.sleep(3000);
+                    Debugger.log("Test", "Sleep done, shutting down client silently");
+                    Main._client.disconnect();
+                }
+                catch(Exception e) {
+                    Debugger.debug("Test", e);
+                }
+            }
+        }).start();
+
+        while(!disconnect.Main._client.isStopped()) {} //to stop app closing
     }
 }

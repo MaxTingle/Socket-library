@@ -73,9 +73,10 @@ public class Client
         }
 
         this._socket = socket;
-        this._writer = new OutputStreamWriter(this._socket.getOutputStream());
         this._inputStream = this._socket.getInputStream();
+        this._writer = new OutputStreamWriter(this._socket.getOutputStream());
         this._reader = new BufferedReader(new InputStreamReader(this._inputStream));
+        this._listenForReplies();
     }
 
     public Collection<Message> getRecivedMessages() {
@@ -151,28 +152,34 @@ public class Client
         return Message.fromJson(line, this);
     }
 
-    public void listenForReplies() {
+    private void _listenForReplies() {
         if(this._listeningForReplies || !this.isReady()) {
             return;
         }
 
         this._listeningForReplies = true;
-        final Client self = this; //stupid java lack of delegates means that inner class changes this and need to preserve this
         this._replyListener = new Thread(new Runnable()
         {
             @Override
             public void run() {
-                Debugger.log("Client", "Listening for replies");
+                Debugger.log(Client.this._getDebuggerCategory(), "Listening for replies");
 
                 try {
                     while (isReady()) {
-                        if (!isMessageWaiting()) {
+                        if (!Client.this.isMessageWaiting()) {
                             continue;
                         }
 
                         String json = _reader.readLine();
+
+                        if(json == null) {
+                            Debugger.log(Client.this._getDebuggerCategory(), "Silent disconnect detected, disconnecting properly");
+                            Client.this.disconnect();
+                            break;
+                        }
+
                         Debugger.log(_getDebuggerCategory(), "Received message " + json);
-                        Message reply = Message.fromJson(json, self);
+                        Message reply = Message.fromJson(json, Client.this);
 
                         if (keepMessages) {
                             _receivedMessages.put(reply.getId(), reply);
@@ -217,17 +224,17 @@ public class Client
                         }
 
                         for (MessageReceived listener : _messageReceivedListeners) {
-                            listener.onMessageReceived(self, reply);
+                            listener.onMessageReceived(Client.this, reply);
                         }
                     }
                 }
                 catch(AuthException e) {
                     disconnect();
-                    Debugger.log(_getDebuggerCategory(), e.toString());
+                    Debugger.log(Client.this._getDebuggerCategory(), e.toString());
                 }
                 catch(Exception e) {
                     disconnect();
-                    Debugger.log(_getDebuggerCategory(), "Failed to read reply from server socket " + e.toString());
+                    Debugger.log(Client.this._getDebuggerCategory(), "Failed to read reply from server socket " + e.toString());
                 }
 
                 _listeningForReplies = false;
@@ -266,6 +273,8 @@ public class Client
         for(DisconnectListener listener : this._disconnectListeners) {
             listener.onDisconnect(this);
         }
+
+        Debugger.log(this._getDebuggerCategory(), "Client disconnected");
     }
 
     private String _getDebuggerCategory() {

@@ -3,6 +3,7 @@ package uk.co.maxtingle.communication.server;
 import uk.co.maxtingle.communication.Debugger;
 import uk.co.maxtingle.communication.client.AuthState;
 import uk.co.maxtingle.communication.client.Client;
+import uk.co.maxtingle.communication.client.events.DisconnectListener;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 import uk.co.maxtingle.communication.server.auth.BasicAuthHandler;
@@ -169,6 +170,19 @@ public class Server
                         Client client = new Client(_listener.accept());
                         client.isRealClient = false;
                         client.keepMessages = _options.keepMessages;
+                        client.onDisconnect(new DisconnectListener()
+                        {
+                            @Override
+                            public void onDisconnect(Client client) {
+                                if(Server.this._clients.indexOf(client) == -1) {
+                                    Debugger.log("Server", "WARNING: Client disconnected but not in clients list");
+                                }
+                                else {
+                                    Server.this._clients.remove(client);
+                                }
+                            }
+                        });
+
                         _clients.add(client);
                         Debugger.log("Server", "Accepted new client");
 
@@ -333,6 +347,5 @@ public class Server
 
     private void _disconnectClient(Client client) throws Exception {
         client.disconnect();
-        this._clients.remove(client);
     }
 }
