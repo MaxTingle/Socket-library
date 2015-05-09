@@ -1,6 +1,7 @@
 package uk.co.maxtingle.communication.common;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import uk.co.maxtingle.communication.client.Client;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 
@@ -103,7 +104,7 @@ public class Message
         return Message._jsonParser.toJson(new SerializableMessage(this));
     }
 
-    public static Message fromJson(String json, Client client) {
+    public static Message fromJson(String json, Client client) throws JsonSyntaxException {
         SerializableMessage serializableMessage = Message._jsonParser.fromJson(json, SerializableMessage.class);
         Message message = new Message(serializableMessage.request);
         message.success = serializableMessage.success;

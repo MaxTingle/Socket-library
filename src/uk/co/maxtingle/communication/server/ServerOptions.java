@@ -6,11 +6,21 @@ import uk.co.maxtingle.communication.server.auth.IMagicAuth;
 
 public class ServerOptions
 {
-    public static final String requestMagicString       = "__SEND_MAGIC__";
-    public static final String requestCredentialsString = "__SEND_CREDENTIALS__";
-    public static final String acceptedAuthString       = "__AUTHENTICATED__";
-    public static final String sendMagicString          = "__MAGIC__";
-    public static final String sendCredentialsString    = "__CREDENTIALS__";
+    /** Reserved strings used by the server and client for authentication */
+    public static final String REQUEST_MAGIC       = "__SEND_MAGIC__";
+    public static final String REQUEST_CREDENTIALS = "__SEND_CREDENTIALS__";
+    public static final String ACCEPTED_AUTH       = "__AUTHENTICATED__";
+    public static final String SEND_MAGIC          = "__MAGIC__";
+    public static final String SEND_CREDENTIALS    = "__CREDENTIALS__";
+
+    /** Heart options */
+    public static final String HEART_BEAT          = "__HEART_BEAT__";
+
+    /**
+     * Number of milliseconds between beats of the heart
+     */
+    public static long         HEART_BMP           = 60 * 1000;
+
 
     /** the port to broadcast on */
     public int port = 8080;

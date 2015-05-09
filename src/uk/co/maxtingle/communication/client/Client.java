@@ -1,9 +1,11 @@
 package uk.co.maxtingle.communication.client;
 
+import com.google.gson.JsonSyntaxException;
 import uk.co.maxtingle.communication.Debugger;
 import uk.co.maxtingle.communication.client.events.AuthStateChanged;
 import uk.co.maxtingle.communication.client.events.DisconnectListener;
 import uk.co.maxtingle.communication.common.AuthException;
+import uk.co.maxtingle.communication.common.InvalidMessageException;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 import uk.co.maxtingle.communication.server.ServerOptions;
@@ -25,6 +27,7 @@ public class Client
     private boolean _closed = false;
     private boolean _listeningForReplies;
     private Thread  _replyListener;
+    private Thread  _heartThread;
 
     //tracking lists
     private ArrayList<DisconnectListener> _disconnectListeners      = new ArrayList<DisconnectListener>();
@@ -73,10 +76,12 @@ public class Client
         }
 
         this._socket = socket;
+        this._socket.setKeepAlive(true);
         this._inputStream = this._socket.getInputStream();
         this._writer = new OutputStreamWriter(this._socket.getOutputStream());
         this._reader = new BufferedReader(new InputStreamReader(this._inputStream));
         this._listenForReplies();
+        this._startHeart();
     }
 
     public Collection<Message> getRecivedMessages() {
@@ -148,11 +153,106 @@ public class Client
         }
 
         String line = this._reader.readLine();
+
+        if(line == null) {
+            throw new Exception("Null message received");
+        }
+
         Debugger.log("Server", "Got message " + line);
-        return Message.fromJson(line, this);
+
+        try {
+            return Message.fromJson(line, this);
+        }
+        catch(JsonSyntaxException e) {
+            throw new InvalidMessageException("JSON parsing failed: " + e.getMessage());
+        }
     }
 
-    private void _listenForReplies() {
+    public boolean isListeningForReplies() {
+        return this._listeningForReplies;
+    }
+
+    public boolean isReady() {
+        return !this._closed && this._socket != null && !this._socket.isClosed() && this._socket.isConnected();
+    }
+
+    public void disconnect() {
+        this._closed = true;
+
+        if(this._replyListener != null && this._replyListener.isAlive()) {
+            this._replyListener.interrupt();
+            this._replyListener = null;
+        }
+
+        if(this._heartThread != null && this._heartThread.isAlive()) {
+            this._heartThread.interrupt();
+            this._heartThread = null;
+        }
+
+        String boundAddress = this._socket.getInetAddress().getHostAddress();
+
+        try {
+            if(this._reader != null) {
+                this._reader.close();
+            }
+
+            if(this._writer != null) {
+                this._writer.close();
+            }
+
+            if(this._socket != null) {
+                this._socket.close();
+            }
+        }
+        catch(Exception e) {
+            Debugger.log(this._getDebuggerCategory(), "Failed to stop reader / writer / socket: " + e.toString());
+        }
+
+        this._socket = null;
+
+        for(DisconnectListener listener : this._disconnectListeners) {
+            listener.onDisconnect(this);
+        }
+
+        Debugger.log(this._getDebuggerCategory(), "Client " + boundAddress + " disconnected");
+    }
+
+    protected void _startHeart() {
+        if(this._heartThread != null || !this.isReady()) {
+            return;
+        }
+
+        this._heartThread = new Thread(new Runnable()
+        {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(ServerOptions.HEART_BMP); //will have only just connected, no need to beat the heart straight away
+                }
+                catch(Exception e) {
+                    if(!Client.this.isStopped()) {
+                        Debugger.log(Client.this._getDebuggerCategory(), "Failed to skip first beat " + e.getMessage());
+                    }
+                }
+
+                while(Client.this.isReady()) {
+                    try {
+                        Client.this.sendMessage(new Message(ServerOptions.HEART_BEAT));
+                        Thread.sleep(ServerOptions.HEART_BMP);
+                    }
+                    catch(Exception e) {
+                        if(!Client.this.isStopped()) {
+                            Debugger.log(Client.this._getDebuggerCategory(), "Heart beat failed, client died: " + e.getMessage());
+                            Client.this.disconnect();
+                        }
+                    }
+                }
+            }
+        });
+        this._heartThread.start();
+    }
+
+    protected void _listenForReplies() {
         if(this._listeningForReplies || !this.isReady()) {
             return;
         }
@@ -179,29 +279,32 @@ public class Client
                         }
 
                         Debugger.log(_getDebuggerCategory(), "Received message " + json);
-                        Message reply = Message.fromJson(json, Client.this);
+                        Message message = Message.fromJson(json, Client.this);
 
-                        if (keepMessages) {
-                            _receivedMessages.put(reply.getId(), reply);
-                            reply.loadResponseTo(_sentMessages);
+                        if(ServerOptions.HEART_BEAT.equals(message.request)) {
+                            continue; //just a heart beat message, take no note
+                        }
+                        else if (keepMessages) {
+                            _receivedMessages.put(message.getId(), message);
+                            message.loadResponseTo(_sentMessages);
 
-                            if(reply.getResponseTo() != null) {
-                                reply.getResponseTo().triggerReplyEvents(reply);
+                            if(message.getResponseTo() != null) {
+                                message.getResponseTo().triggerReplyEvents(message);
                             }
                         }
 
                         if (isRealClient) { //to stop this modifying any server auth
                             //handling special server commands
-                            if (reply.request.equals(ServerOptions.requestMagicString)) { //sending magic
+                            if (ServerOptions.REQUEST_MAGIC.equals(message.request)) { //sending magic
                                 if (_magic == null || _magic.trim().equals("")) {
                                     throw new Exception("Server requested magic but no magic to reply with");
                                 }
 
                                 setAuthState(AuthState.AWAITING_MAGIC);
-                                reply.respond(new Message(ServerOptions.sendMagicString, new Object[]{_magic}));
+                                message.respond(new Message(ServerOptions.SEND_MAGIC, new Object[]{_magic}));
                                 continue;
                             }
-                            else if (reply.request.equals(ServerOptions.requestCredentialsString)) { //sending credentials
+                            else if (ServerOptions.REQUEST_CREDENTIALS.equals(message.request)) { //sending credentials
                                 if (_username == null || _password == null || _username.trim().equals("")) {
                                     throw new Exception("Server requested credentials but no credentials to reply with");
                                 }
@@ -211,20 +314,20 @@ public class Client
                                 Map<String, String> authParams = new HashMap<String, String>();
                                 authParams.put("username", _username);
                                 authParams.put("password", _password);
-                                reply.respond(new Message(ServerOptions.sendCredentialsString, new Object[]{authParams}));
+                                message.respond(new Message(ServerOptions.SEND_CREDENTIALS, new Object[]{authParams}));
                                 continue;
                             }
-                            else if (reply.request.equals(ServerOptions.acceptedAuthString)) {
+                            else if (ServerOptions.ACCEPTED_AUTH.equals(message.request)) {
                                 setAuthState(AuthState.ACCEPTED);
                                 continue;
                             }
-                            else if (reply.success != null && !reply.success && getAuthState() != AuthState.ACCEPTED) { //not authed and reply from server
-                                throw new AuthException("Authentication failed: " + reply.request);
+                            else if (message.success != null && !message.success && getAuthState() != AuthState.ACCEPTED) { //not authed and reply from server
+                                throw new AuthException("Authentication failed: " + message.request);
                             }
                         }
 
                         for (MessageReceived listener : _messageReceivedListeners) {
-                            listener.onMessageReceived(Client.this, reply);
+                            listener.onMessageReceived(Client.this, message);
                         }
                     }
                 }
@@ -243,41 +346,7 @@ public class Client
         this._replyListener.start();
     }
 
-    public boolean isListeningForReplies() {
-        return this._listeningForReplies;
-    }
-
-    public boolean isReady() {
-        return !this._closed && this._socket != null && !this._socket.isClosed() && this._socket.isConnected();
-    }
-
-    public void disconnect() {
-        this._closed = true;
-
-        if(this._replyListener != null && this._replyListener.isAlive()) {
-            this._replyListener.interrupt();
-            this._replyListener = null;
-        }
-
-        try {
-            this._reader.close();
-            this._writer.close();
-            this._socket.close();
-        }
-        catch(Exception e) {
-            Debugger.log(this._getDebuggerCategory(), "Failed to stop reader / writer / socket " + e.toString());
-        }
-
-        this._socket = null;
-
-        for(DisconnectListener listener : this._disconnectListeners) {
-            listener.onDisconnect(this);
-        }
-
-        Debugger.log(this._getDebuggerCategory(), "Client disconnected");
-    }
-
-    private String _getDebuggerCategory() {
+    protected String _getDebuggerCategory() {
         return this.isRealClient ? "Client" : "Server-Client";
     }
 }
