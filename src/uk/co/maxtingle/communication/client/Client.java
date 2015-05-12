@@ -100,6 +100,10 @@ public class Client
         return this._sentMessages.get(id);
     }
 
+    public Socket getSocket() {
+        return this._socket;
+    }
+
     public AuthState getAuthState() {
         return this._authState;
     }
