@@ -1,8 +1,8 @@
 package communication;
 
-import uk.co.maxtingle.communication.Debugger;
 import uk.co.maxtingle.communication.client.Client;
 import uk.co.maxtingle.communication.client.events.DisconnectListener;
+import uk.co.maxtingle.communication.common.Debugger;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 import uk.co.maxtingle.communication.server.Server;

@@ -1,10 +1,10 @@
 package uk.co.maxtingle.communication.client;
 
 import com.google.gson.JsonSyntaxException;
-import uk.co.maxtingle.communication.Debugger;
 import uk.co.maxtingle.communication.client.events.AuthStateChanged;
 import uk.co.maxtingle.communication.client.events.DisconnectListener;
 import uk.co.maxtingle.communication.common.AuthException;
+import uk.co.maxtingle.communication.common.Debugger;
 import uk.co.maxtingle.communication.common.InvalidMessageException;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
@@ -43,6 +43,7 @@ public class Client
     private String _password;
 
     //settings
+    public static boolean logHeartbeat = false;
     public boolean isRealClient = true; //if this is a server client or an actual client talking to a server
     public boolean keepMessages = true; //can disable this for memory usage but doing so will mean manual replies needed
 
@@ -146,7 +147,9 @@ public class Client
             this._sentMessages.put(msg.getId(), msg);
         }
 
-        Debugger.log(this._getDebuggerCategory(), "Sending message " + msg.toString());
+        if(Client.logHeartbeat || !ServerOptions.HEART_BEAT.equals(msg.request)) {
+            Debugger.log(this._getDebuggerCategory(), "Sending message " + msg.toString());
+        }
         this._writer.write(msg.toString() + "\n");
         this._writer.flush();
     }
@@ -162,12 +165,17 @@ public class Client
             throw new Exception("Null message received");
         }
 
-        Debugger.log("Server", "Got message " + line);
-
         try {
-            return Message.fromJson(line, this);
+            Message message = Message.fromJson(line, this);
+
+            if(Client.logHeartbeat || !ServerOptions.HEART_BEAT.equals(message.request)) {
+                Debugger.log(this._getDebuggerCategory(), "Got message " + line);
+            }
+
+            return message;
         }
         catch(JsonSyntaxException e) {
+            Debugger.log(this._getDebuggerCategory(), "Got message " + line);
             throw new InvalidMessageException("JSON parsing failed: " + e.getMessage());
         }
     }
