@@ -3,6 +3,7 @@ package uk.co.maxtingle.communication.server;
 import uk.co.maxtingle.communication.client.AuthState;
 import uk.co.maxtingle.communication.client.Client;
 import uk.co.maxtingle.communication.client.events.DisconnectListener;
+import uk.co.maxtingle.communication.common.AuthException;
 import uk.co.maxtingle.communication.common.Debugger;
 import uk.co.maxtingle.communication.common.InvalidMessageException;
 import uk.co.maxtingle.communication.common.Message;
@@ -165,11 +166,13 @@ public class Server
             public void run() {
                 Debugger.log("Server", "Listening for clients");
 
-                while (isReady()) {
+                while (Server.this.isReady()) {
                     try {
-                        Client client = new Client(_listener.accept());
+                        Client client = new Client();
                         client.isRealClient = false;
-                        client.keepMessages = _options.keepMessages;
+                        client.keepMessages = Server.this._options.keepMessages;
+                        client.connect(Server.this._listener.accept());
+
                         client.onDisconnect(new DisconnectListener()
                         {
                             @Override
@@ -196,7 +199,7 @@ public class Server
                         }
                         else {
                             client.setAuthState(AuthState.ACCEPTED); //no auth in place
-                            client.sendMessage(new Message(true, ServerOptions.ACCEPTED_AUTH));
+                            client.sendMessage(new Message(ServerOptions.ACCEPTED_AUTH));
                         }
                     }
                     catch(Exception e) {
@@ -250,44 +253,51 @@ public class Server
                     try {
                         for(int i = _clients.size() - 1; i != -1; i--) { //will be dynamically removing from list
                             Client client = _clients.get(i);
-                            if(client.isStopped()) {
+                            if (client.isStopped()) {
                                 continue;
                             }
                             else if (!client.isMessageWaiting()) {
                                 continue;
                             }
 
-                            Message message;
+                            Message message = null;
                             try {
                                 message = client.getMessage();
-                            }
-                            catch(InvalidMessageException e) {
-                                Debugger.log("Server", "Client sent invalid message (" + e.getMessage() + "), disconnecting.");
-                                client.disconnect();
-                                continue;
-                            }
 
-                            if (client.getAuthState() != AuthState.ACCEPTED) {
-                                if (ServerOptions.SEND_MAGIC.equals(message.request) || ServerOptions.SEND_CREDENTIALS.equals(message.request)) {
-                                    try {
-                                        _handleSpecialMessage(client, message); //sent special message
+                                if (ServerOptions.HEART_BEAT.equals(message.request)) {
+                                    continue; //just a heart beat message, take no note
+                                }
+                                else if (client.getAuthState() != AuthState.ACCEPTED) {
+                                    if (ServerOptions.SEND_MAGIC.equals(message.request) || ServerOptions.SEND_CREDENTIALS.equals(message.request)) {
+                                        Server.this._handleSpecialMessage(client, message); //sent special message
                                     }
-                                    catch(Exception e) { //failed auth
-                                        message.respond(new Message(false, e.toString()));
+                                    else { //asked for expectedMagic / credentials, didn't get it
+                                        message.respond(new Message(false, "Not authenticated, request rejected"));
+                                        Server.this._disconnectClient(client);
                                     }
                                 }
-                                else { //asked for expectedMagic / credentials, didn't get it
-                                    message.respond(new Message(false, "Not authenticated, request rejected"));
-                                    _disconnectClient(client);
-                                }
-                            }
-                            else {
-                                try {
+                                else {
+                                    /* Server handling the message */
                                     for (MessageReceived listener : _messageReceivedListeners) {
                                         listener.onMessageReceived(client, message);
                                     }
+
+                                    /* Client specific server side bounds handling the message, things like onReply will trigger from this */
+                                    client.handleMessage(message);
                                 }
-                                catch(Exception e) {
+                            }
+                            catch (InvalidMessageException e) {
+                                Debugger.log("Server", "Client sent invalid message (" + e.getMessage() + "), disconnecting.");
+                                client.disconnect();
+                            }
+                            catch(AuthException e) {
+                                if(message != null) {
+                                    message.respond(new Message(false, e.getMessage()));
+                                }
+                                client.disconnect();
+                            }
+                            catch (Exception e) { //failed auth
+                                if(message != null) {
                                     message.respond(new Message(false, e.toString()));
                                 }
                             }
@@ -313,13 +323,13 @@ public class Server
         else if(message.params[0] == null) {
             throw new Exception("Null param given");
         }
-        else if(_options.useMagic && client.getAuthState() == AuthState.AWAITING_MAGIC) {
+        else if(this._options.useMagic && client.getAuthState() == AuthState.AWAITING_MAGIC) {
             if(!(message.params[0] instanceof String)) {
                 //not sent a string
                 throw new Exception("Incorrect type of param");
             }
-            else if(_options.magicAuthHandler.authMagic((String)message.params[0], client, message, _options)) {
-                if(_options.useCredentials) { //stage 1 complete, ask for credentials now
+            else if(this._options.magicAuthHandler.authMagic((String)message.params[0], client, message, _options)) {
+                if(this._options.useCredentials) { //stage 1 complete, ask for credentials now
                     client.setAuthState(AuthState.AWAITING_CREDENTIALS);
                     message.respond(new Message(true, ServerOptions.REQUEST_CREDENTIALS));
                 }
@@ -332,7 +342,7 @@ public class Server
                 throw new Exception("Incorrect magic");
             }
         }
-        else if(_options.useCredentials && client.getAuthState() == AuthState.AWAITING_CREDENTIALS) {
+        else if(this._options.useCredentials && client.getAuthState() == AuthState.AWAITING_CREDENTIALS) {
             String username;
             String password;
 

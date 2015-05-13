@@ -81,7 +81,8 @@ public class Client
         this._inputStream = this._socket.getInputStream();
         this._writer = new OutputStreamWriter(this._socket.getOutputStream());
         this._reader = new BufferedReader(new InputStreamReader(this._inputStream));
-        this._listenForReplies();
+
+        this._listenForReplies(); //the server handles its own replies all on one thread not one thread per client
         this._startHeart();
     }
 
@@ -180,6 +181,21 @@ public class Client
         }
     }
 
+    public void handleMessage(Message message) throws Exception {
+        if (keepMessages) {
+            _receivedMessages.put(message.getId(), message);
+            message.loadResponseTo(_sentMessages);
+
+            if(message.getResponseTo() != null) {
+                message.getResponseTo().triggerReplyEvents(message);
+            }
+        }
+
+        for (MessageReceived listener : _messageReceivedListeners) {
+            listener.onMessageReceived(Client.this, message);
+        }
+    }
+
     public boolean isListeningForReplies() {
         return this._listeningForReplies;
     }
@@ -265,7 +281,7 @@ public class Client
     }
 
     protected void _listenForReplies() {
-        if(this._listeningForReplies || !this.isReady()) {
+        if(!this.isRealClient || this._listeningForReplies || !this.isReady()) {
             return;
         }
 
@@ -282,64 +298,17 @@ public class Client
                             continue;
                         }
 
-                        String json = _reader.readLine();
-
-                        if(json == null) {
-                            Debugger.log(Client.this._getDebuggerCategory(), "Silent disconnect detected, disconnecting properly");
-                            Client.this.disconnect();
-                            break;
-                        }
-
-                        Debugger.log(_getDebuggerCategory(), "Received message " + json);
-                        Message message = Message.fromJson(json, Client.this);
-
+                        Message message = Client.this.getMessage();
                         if(ServerOptions.HEART_BEAT.equals(message.request)) {
-                            continue; //just a heart beat message, take no note
-                        }
-                        else if (keepMessages) {
-                            _receivedMessages.put(message.getId(), message);
-                            message.loadResponseTo(_sentMessages);
-
-                            if(message.getResponseTo() != null) {
-                                message.getResponseTo().triggerReplyEvents(message);
-                            }
+                            continue; //just a heartbeat message, ignore it
                         }
 
-                        if (isRealClient) { //to stop this modifying any server auth
-                            //handling special server commands
-                            if (ServerOptions.REQUEST_MAGIC.equals(message.request)) { //sending magic
-                                if (_magic == null || _magic.trim().equals("")) {
-                                    throw new Exception("Server requested magic but no magic to reply with");
-                                }
-
-                                setAuthState(AuthState.AWAITING_MAGIC);
-                                message.respond(new Message(ServerOptions.SEND_MAGIC, new Object[]{_magic}));
-                                continue;
-                            }
-                            else if (ServerOptions.REQUEST_CREDENTIALS.equals(message.request)) { //sending credentials
-                                if (_username == null || _password == null || _username.trim().equals("")) {
-                                    throw new Exception("Server requested credentials but no credentials to reply with");
-                                }
-
-                                setAuthState(AuthState.AWAITING_CREDENTIALS);
-
-                                Map<String, String> authParams = new HashMap<String, String>();
-                                authParams.put("username", _username);
-                                authParams.put("password", _password);
-                                message.respond(new Message(ServerOptions.SEND_CREDENTIALS, new Object[]{authParams}));
-                                continue;
-                            }
-                            else if (ServerOptions.ACCEPTED_AUTH.equals(message.request)) {
-                                setAuthState(AuthState.ACCEPTED);
-                                continue;
-                            }
-                            else if (message.success != null && !message.success && getAuthState() != AuthState.ACCEPTED) { //not authed and reply from server
-                                throw new AuthException("Authentication failed: " + message.request);
-                            }
+                        /* Handle the message */
+                        if(Client.this.getAuthState() != AuthState.ACCEPTED) {
+                            Client.this._handleSpecialMessage(message);
                         }
-
-                        for (MessageReceived listener : _messageReceivedListeners) {
-                            listener.onMessageReceived(Client.this, message);
+                        else {
+                            Client.this.handleMessage(message);
                         }
                     }
                 }
@@ -352,10 +321,40 @@ public class Client
                     Debugger.log(Client.this._getDebuggerCategory(), "Failed to read reply from server socket " + e.toString());
                 }
 
-                _listeningForReplies = false;
+                Client.this._listeningForReplies = false;
             }
         });
         this._replyListener.start();
+    }
+
+    protected void _handleSpecialMessage(Message message) throws Exception {
+        //handling special server commands
+        if (ServerOptions.REQUEST_MAGIC.equals(message.request)) { //sending magic
+            if (Client.this._magic == null || Client.this._magic.trim().equals("")) {
+                throw new Exception("Server requested magic but no magic to reply with");
+            }
+
+            Client.this.setAuthState(AuthState.AWAITING_MAGIC);
+            message.respond(new Message(ServerOptions.SEND_MAGIC, new Object[]{_magic}));
+        }
+        else if (ServerOptions.REQUEST_CREDENTIALS.equals(message.request)) { //sending credentials
+            if (Client.this._username == null || Client.this._password == null || Client.this._username.trim().equals("")) {
+                throw new Exception("Server requested credentials but no credentials to reply with");
+            }
+
+            Client.this.setAuthState(AuthState.AWAITING_CREDENTIALS);
+
+            Map<String, String> authParams = new HashMap<String, String>();
+            authParams.put("username", Client.this._username);
+            authParams.put("password", Client.this._password);
+            message.respond(new Message(ServerOptions.SEND_CREDENTIALS, new Object[]{authParams}));
+        }
+        else if (ServerOptions.ACCEPTED_AUTH.equals(message.request)) {
+            setAuthState(AuthState.ACCEPTED);
+        }
+        else if (message.success != null && !message.success && getAuthState() != AuthState.ACCEPTED) { //not authed and reply from server
+            throw new AuthException("Authentication failed: " + message.request);
+        }
     }
 
     protected String _getDebuggerCategory() {
