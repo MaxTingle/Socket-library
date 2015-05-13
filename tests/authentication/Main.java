@@ -1,10 +1,11 @@
 package authentication;
 
 import uk.co.maxtingle.communication.client.Client;
-import uk.co.maxtingle.communication.client.events.DisconnectListener;
-import uk.co.maxtingle.communication.common.Debugger;
+import uk.co.maxtingle.communication.common.BaseClient;
 import uk.co.maxtingle.communication.common.Message;
+import uk.co.maxtingle.communication.common.events.DisconnectListener;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
+import uk.co.maxtingle.communication.debug.Debugger;
 import uk.co.maxtingle.communication.server.Server;
 import uk.co.maxtingle.communication.server.ServerOptions;
 
@@ -27,8 +28,8 @@ public class Main
     private static BufferedReader   _terminalReader;
     private static TerminalListener _terminalOverride;
 
-    private static Client _client;
-    private static Server _server;
+    private static BaseClient _client;
+    private static Server     _server;
 
     public static void main(String[] args) throws Exception {
         Main._terminalReader = new BufferedReader(new InputStreamReader(System.in));
@@ -48,7 +49,7 @@ public class Main
         Main._server.onMessageReceived(new MessageReceived()
         {
             @Override
-            public void onMessageReceived(final Client client, final Message msg) throws Exception {
+            public void onMessageReceived(final BaseClient baseClient, final Message msg) throws Exception {
                 Debugger.log("Server", "Enter a message to reply with");
                 Main._terminalOverride = new TerminalListener()
                 {
@@ -66,7 +67,7 @@ public class Main
         Main._client.onDisconnect(new DisconnectListener()
         {
             @Override
-            public void onDisconnect(Client client) {
+            public void onDisconnect(BaseClient baseClient) {
                 new Thread(new Runnable()
                 {
                     @Override

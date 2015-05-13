@@ -1,19 +1,20 @@
 package disconnect;
 
 import uk.co.maxtingle.communication.client.Client;
-import uk.co.maxtingle.communication.common.Debugger;
+import uk.co.maxtingle.communication.common.BaseClient;
 import uk.co.maxtingle.communication.common.Message;
+import uk.co.maxtingle.communication.debug.Debugger;
 import uk.co.maxtingle.communication.server.Server;
 
 import java.net.Socket;
 
 public class Main
 {
-    private static final String _address  = "127.0.0.1";
-    private static final int    _port     = 8080;
+    private static final String _address = "127.0.0.1";
+    private static final int    _port    = 8080;
 
-    private static Client _client;
-    private static Server _server;
+    private static BaseClient _client;
+    private static Server     _server;
 
     public static void main(String[] args) throws Exception {
         Debugger.setDefaultLogger();
@@ -23,8 +24,8 @@ public class Main
         Main._server.start();
 
         //client
-        Main._client = new Client();
-        Main._client.connect(new Socket(Main._address, Main._port));
+        BaseClient.logHeartbeat = true;
+        Main._client = new Client(new Socket(Main._address, Main._port));
         Main._client.sendMessage(new Message("yoyoyoyoy"));
 
         //Main._silentClientDisconnect();

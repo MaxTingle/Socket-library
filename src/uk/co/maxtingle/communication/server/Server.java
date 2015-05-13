@@ -1,13 +1,11 @@
 package uk.co.maxtingle.communication.server;
 
-import uk.co.maxtingle.communication.client.AuthState;
-import uk.co.maxtingle.communication.client.Client;
-import uk.co.maxtingle.communication.client.events.DisconnectListener;
-import uk.co.maxtingle.communication.common.AuthException;
-import uk.co.maxtingle.communication.common.Debugger;
-import uk.co.maxtingle.communication.common.InvalidMessageException;
+import uk.co.maxtingle.communication.common.AuthState;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
+import uk.co.maxtingle.communication.common.exception.AuthException;
+import uk.co.maxtingle.communication.common.exception.InvalidMessageException;
+import uk.co.maxtingle.communication.debug.Debugger;
 import uk.co.maxtingle.communication.server.auth.BasicAuthHandler;
 import uk.co.maxtingle.communication.server.auth.IAuthHandler;
 import uk.co.maxtingle.communication.server.auth.ICredentialAuth;
@@ -15,18 +13,18 @@ import uk.co.maxtingle.communication.server.auth.IMagicAuth;
 
 import java.net.ServerSocket;
 import java.util.ArrayList;
-import java.util.Map;
 
 public class Server
 {
-    private ServerOptions _options;
+    protected ServerOptions _options;
+    protected ArrayList<ServerClient>    _clients                  = new ArrayList<ServerClient>();
+    protected ArrayList<MessageReceived> _messageReceivedListeners = new ArrayList<MessageReceived>();
+
     private ServerSocket  _listener;
     private Thread        _clientListenerThread;
     private Thread        _messageListenerThread;
+    private Thread        _heartThread;
     private boolean _closing = false;
-
-    private ArrayList<Client>          _clients                  = new ArrayList<Client>();
-    private ArrayList<MessageReceived> _messageReceivedListeners = new ArrayList<MessageReceived>();
 
     public Server() {
         this._options = new ServerOptions() {};
@@ -51,7 +49,7 @@ public class Server
         return !this._closing && this._listener != null && this._listener.isBound() && !this._listener.isClosed();
     }
 
-    public ArrayList<Client> getClients() {
+    public ArrayList<ServerClient> getClients() {
         return this._clients;
     }
 
@@ -68,16 +66,16 @@ public class Server
         this._options.magicAuthHandler = new IMagicAuth()
         {
             @Override
-            public boolean authMagic(String magic, Client client, Message message, ServerOptions options) throws Exception {
-                return handler.authMagic(magic, client, message, options);
+            public boolean authMagic(String magic, ServerClient client, Message message, ServerOptions options) throws Exception {
+            return handler.authMagic(magic, client, message, options);
             }
         };
 
         this._options.credentialAuthHandler = new ICredentialAuth()
         {
             @Override
-            public boolean authCredentials(String username, String password, Client client, Message message, ServerOptions options) throws Exception {
-                return handler.authCredentials(username, password, client, message, options);
+            public boolean authCredentials(String username, String password, ServerClient client, Message message, ServerOptions options) throws Exception {
+            return handler.authCredentials(username, password, client, message, options);
             }
         };
     }
@@ -90,14 +88,14 @@ public class Server
         this._options.credentialAuthHandler = handler;
     }
 
-    public ArrayList<Client> getAcceptedClients() {
+    public ArrayList<ServerClient> getAcceptedClients() {
         if(!this._options.useMagic && !this._options.useCredentials) {
             return this._clients;
         }
 
-        ArrayList<Client> matchingClients = new ArrayList<Client>();
+        ArrayList<ServerClient> matchingClients = new ArrayList<ServerClient>();
 
-        for(Client client : this._clients) {
+        for(ServerClient client : this._clients) {
             if((this._options.useCredentials || (!this._options.useCredentials && this._options.useMagic))
                && client.getAuthState() == AuthState.ACCEPTED)
             {
@@ -108,10 +106,10 @@ public class Server
         return matchingClients;
     }
 
-    public ArrayList<Client> getClientsInState(AuthState state) {
-        ArrayList<Client> matches = new ArrayList<Client>();
+    public ArrayList<ServerClient> getClientsInState(AuthState state) {
+        ArrayList<ServerClient> matches = new ArrayList<ServerClient>();
 
-        for(Client client : this._clients) {
+        for(ServerClient client : this._clients) {
             if(client.getAuthState() == state) {
                 matches.add(client);
             }
@@ -126,6 +124,7 @@ public class Server
         Debugger.log("Server", "Listening on " + this._listener.getInetAddress().toString() + ":" + this._options.port);
         this._listenForClients();
         this._listenForMessages();
+        this._startHeart();
     }
 
     public void stop() throws Exception {
@@ -136,6 +135,12 @@ public class Server
             this._clientListenerThread.interrupt();
             this._clientListenerThread = null;
             Debugger.log("Server", "Client listener disabled");
+        }
+
+        if(this._heartThread != null) {
+            this._heartThread.interrupt();
+            this._heartThread = null;
+            Debugger.log("Server", "Heartbeat detector disabled");
         }
 
         if(this._messageListenerThread != null) {
@@ -168,39 +173,9 @@ public class Server
 
                 while (Server.this.isReady()) {
                     try {
-                        Client client = new Client();
-                        client.isRealClient = false;
-                        client.keepMessages = Server.this._options.keepMessages;
-                        client.connect(Server.this._listener.accept());
-
-                        client.onDisconnect(new DisconnectListener()
-                        {
-                            @Override
-                            public void onDisconnect(Client client) {
-                                if(Server.this._clients.indexOf(client) == -1) {
-                                    Debugger.log("Server", "WARNING: Client disconnected but not in clients list");
-                                }
-                                else {
-                                    Server.this._clients.remove(client);
-                                }
-                            }
-                        });
-
-                        _clients.add(client);
-                        Debugger.log("Server", "Accepted new client");
-
-                        if(_options.useMagic) {
-                            client.setAuthState(AuthState.AWAITING_MAGIC);
-                            client.sendMessage(new Message(ServerOptions.REQUEST_MAGIC));
-                        }
-                        else if(_options.useCredentials) {
-                            client.setAuthState(AuthState.AWAITING_CREDENTIALS);
-                            client.sendMessage(new Message(ServerOptions.REQUEST_CREDENTIALS));
-                        }
-                        else {
-                            client.setAuthState(AuthState.ACCEPTED); //no auth in place
-                            client.sendMessage(new Message(ServerOptions.ACCEPTED_AUTH));
-                        }
+                        ServerClient client = new ServerClient(Server.this._listener.accept(), Server.this);
+                        Server.this._clients.add(client);
+                        Debugger.log("Server", "Accepted new client - " + client.getSocket().getInetAddress().toString());
                     }
                     catch(Exception e) {
                         /*
@@ -238,6 +213,50 @@ public class Server
         this._clientListenerThread.start();
     }
 
+    protected void _startHeart() {
+        if(this._heartThread != null && this._heartThread.isAlive()) {
+            return;
+        }
+
+        this._heartThread = new Thread(new Runnable()
+        {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(ServerOptions.HEART_BMP); //will have only just connected, no need to beat the heart straight away
+                }
+                catch(Exception e) {
+                    if(!Server.this._closing) {
+                        Debugger.log("Server", "Failed to skip first beat " + e.getMessage());
+                    }
+                }
+
+                while(Server.this.isReady()) {
+                    for(int i = _clients.size() - 1; i != -1; i--) { //will be dynamically removing from list
+                        ServerClient client = _clients.get(i);
+                        try {
+                            client.sendMessage(new Message(ServerOptions.HEART_BEAT));
+                        }
+                        catch(Exception e) {
+                            if(!Server.this._closing) {
+                                Debugger.log("Server", "Heart beat failed, client died: " + e.getMessage());
+                                client.disconnect();
+                            }
+                        }
+                    }
+
+                    try {
+                        Thread.sleep(ServerOptions.HEART_BMP);
+                    }
+                    catch(InterruptedException e) {
+                        Debugger.log("Server", "Error sleeping heart thread " + e.getMessage());
+                    }
+                }
+            }
+        });
+        this._heartThread.start();
+    }
+
     protected void _listenForMessages() {
         if(this._messageListenerThread != null && this._messageListenerThread.isAlive()) {
             return; //already started
@@ -252,8 +271,12 @@ public class Server
                 while (isReady()) {
                     try {
                         for(int i = _clients.size() - 1; i != -1; i--) { //will be dynamically removing from list
-                            Client client = _clients.get(i);
-                            if (client.isStopped()) {
+                            ServerClient client = _clients.get(i);
+
+                            if(client == null) {
+                                continue;
+                            }
+                            else if (client.isStopped()) {
                                 continue;
                             }
                             else if (!client.isMessageWaiting()) {
@@ -269,11 +292,11 @@ public class Server
                                 }
                                 else if (client.getAuthState() != AuthState.ACCEPTED) {
                                     if (ServerOptions.SEND_MAGIC.equals(message.request) || ServerOptions.SEND_CREDENTIALS.equals(message.request)) {
-                                        Server.this._handleSpecialMessage(client, message); //sent special message
+                                        client.handleAuthMessage(message);
                                     }
                                     else { //asked for expectedMagic / credentials, didn't get it
                                         message.respond(new Message(false, "Not authenticated, request rejected"));
-                                        Server.this._disconnectClient(client);
+                                        client.disconnect();
                                     }
                                 }
                                 else {
@@ -310,64 +333,5 @@ public class Server
             }
         });
         this._messageListenerThread.start();
-    }
-
-    protected void _disconnectClient(Client client) throws Exception {
-        client.disconnect();
-    }
-
-    protected void _handleSpecialMessage(Client client, Message message) throws Exception {
-        if(message.params.length != 1) { //not got any params
-            throw new Exception("Incorrect number of params");
-        }
-        else if(message.params[0] == null) {
-            throw new Exception("Null param given");
-        }
-        else if(this._options.useMagic && client.getAuthState() == AuthState.AWAITING_MAGIC) {
-            if(!(message.params[0] instanceof String)) {
-                //not sent a string
-                throw new Exception("Incorrect type of param");
-            }
-            else if(this._options.magicAuthHandler.authMagic((String)message.params[0], client, message, _options)) {
-                if(this._options.useCredentials) { //stage 1 complete, ask for credentials now
-                    client.setAuthState(AuthState.AWAITING_CREDENTIALS);
-                    message.respond(new Message(true, ServerOptions.REQUEST_CREDENTIALS));
-                }
-                else { //expectedMagic only, they have passed auth
-                    client.setAuthState(AuthState.ACCEPTED);
-                    message.respond(new Message(true, ServerOptions.ACCEPTED_AUTH));
-                }
-            }
-            else {
-                throw new Exception("Incorrect magic");
-            }
-        }
-        else if(this._options.useCredentials && client.getAuthState() == AuthState.AWAITING_CREDENTIALS) {
-            String username;
-            String password;
-
-            try {
-                if(!(message.params[0] instanceof Map)) {
-                    throw new Exception("Invalid username and password type. params[0] must be an associative array (Map) with username and password in.");
-                }
-
-                @SuppressWarnings("unchecked")
-                Map<String, String> hashMap = (Map<String, String>) message.params[0];
-
-                username = hashMap.get("username");
-                password = hashMap.get("password");
-            }
-            catch(Exception e) {
-                throw new Exception("Invalid username and password type. params[0] must be an associative array (Map) with username and password in.");
-            }
-
-            if(_options.credentialAuthHandler.authCredentials(username, password, client, message, _options)) {
-                client.setAuthState(AuthState.ACCEPTED);
-                message.respond(new Message(true, ServerOptions.ACCEPTED_AUTH));
-            }
-            else {
-                throw new Exception("Invalid credentials");
-            }
-        }
     }
 }

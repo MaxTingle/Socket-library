@@ -2,7 +2,6 @@ package uk.co.maxtingle.communication.common;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
-import uk.co.maxtingle.communication.client.Client;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 
 import java.math.BigInteger;
@@ -16,13 +15,13 @@ public class Message
     private static final Gson         _jsonParser = new Gson();
     private static final SecureRandom _random     = new SecureRandom();
 
-    public  Object[] params;
-    public  String   request;
-    public  Boolean  success;
-    private String   _id;
-    private Client   _client; //needs to be private so not serialized
-    String   _responseToId; //the message this message is a response to
-    private Message  _responseToMessage;
+    public  Object[]   params;
+    public  String     request;
+    public  Boolean    success;
+    private String     _id;
+    private BaseClient _client; //needs to be private so not serialized
+    String _responseToId; //the message this message is a response to
+    private Message _responseToMessage;
     private ArrayList<MessageReceived> _replyListeners = new ArrayList<MessageReceived>();
 
     /* Client making requests */
@@ -104,19 +103,19 @@ public class Message
         return Message._jsonParser.toJson(new SerializableMessage(this));
     }
 
-    public static Message fromJson(String json, Client client) throws JsonSyntaxException {
+    public static Message fromJson(String json, BaseClient baseClient) throws JsonSyntaxException {
         SerializableMessage serializableMessage = Message._jsonParser.fromJson(json, SerializableMessage.class);
         Message message = new Message(serializableMessage.request);
         message.success = serializableMessage.success;
         message.params = serializableMessage.params;
-        message._client = client;
+        message._client = baseClient;
         message._responseToId = serializableMessage.responseTo;
         message._id = serializableMessage.id;
 
         return message;
     }
 
-    void setClient(Client client) {
-        this._client = client;
+    void setClient(BaseClient baseClient) {
+        this._client = baseClient;
     }
 }

@@ -1,4 +1,4 @@
-package uk.co.maxtingle.communication.common;
+package uk.co.maxtingle.communication.common.exception;
 
 public class InvalidMessageException extends Exception {
     public InvalidMessageException(String msg) {

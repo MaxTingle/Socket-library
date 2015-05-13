@@ -1,4 +1,4 @@
-package uk.co.maxtingle.communication.client;
+package uk.co.maxtingle.communication.common;
 
 public enum AuthState
 {

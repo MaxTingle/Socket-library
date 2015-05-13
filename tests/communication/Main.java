@@ -1,10 +1,11 @@
 package communication;
 
 import uk.co.maxtingle.communication.client.Client;
-import uk.co.maxtingle.communication.client.events.DisconnectListener;
-import uk.co.maxtingle.communication.common.Debugger;
+import uk.co.maxtingle.communication.common.BaseClient;
 import uk.co.maxtingle.communication.common.Message;
+import uk.co.maxtingle.communication.common.events.DisconnectListener;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
+import uk.co.maxtingle.communication.debug.Debugger;
 import uk.co.maxtingle.communication.server.Server;
 
 import java.io.BufferedReader;
@@ -36,7 +37,7 @@ public class Main
         Main._server.onMessageReceived(new MessageReceived()
         {
             @Override
-            public void onMessageReceived(final Client client, final Message msg) throws Exception {
+            public void onMessageReceived(final BaseClient client, final Message msg) throws Exception {
                 Debugger.log("Server", "Enter a message to reply with");
                 Main._terminalOverride = new TerminalListener()
                 {
@@ -54,7 +55,7 @@ public class Main
         Main._client.onDisconnect(new DisconnectListener()
         {
             @Override
-            public void onDisconnect(Client client) {
+            public void onDisconnect(BaseClient client) {
                 new Thread(new Runnable()
                 {
                     @Override

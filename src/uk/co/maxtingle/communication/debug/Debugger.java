@@ -1,4 +1,4 @@
-package uk.co.maxtingle.communication.common;
+package uk.co.maxtingle.communication.debug;
 
 public class Debugger
 {

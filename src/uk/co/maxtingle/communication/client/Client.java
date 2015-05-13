@@ -1,51 +1,26 @@
 package uk.co.maxtingle.communication.client;
 
-import com.google.gson.JsonSyntaxException;
-import uk.co.maxtingle.communication.client.events.AuthStateChanged;
-import uk.co.maxtingle.communication.client.events.DisconnectListener;
-import uk.co.maxtingle.communication.common.AuthException;
-import uk.co.maxtingle.communication.common.Debugger;
-import uk.co.maxtingle.communication.common.InvalidMessageException;
+import uk.co.maxtingle.communication.common.AuthState;
+import uk.co.maxtingle.communication.common.BaseClient;
 import uk.co.maxtingle.communication.common.Message;
-import uk.co.maxtingle.communication.common.events.MessageReceived;
+import uk.co.maxtingle.communication.common.exception.AuthException;
+import uk.co.maxtingle.communication.debug.Debugger;
 import uk.co.maxtingle.communication.server.ServerOptions;
 
-import java.io.*;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
-public class Client
+public class Client extends BaseClient
 {
-    private Socket             _socket;
-    private OutputStreamWriter _writer;
-    private InputStream        _inputStream;
-    private BufferedReader     _reader;
-
-    private boolean _closed = false;
-    private boolean _listeningForReplies;
-    private Thread  _replyListener;
     private Thread  _heartThread;
-
-    //tracking lists
-    private ArrayList<DisconnectListener> _disconnectListeners      = new ArrayList<DisconnectListener>();
-    private ArrayList<AuthStateChanged>   _authStateListeners       = new ArrayList<AuthStateChanged>();
-    private ArrayList<MessageReceived>    _messageReceivedListeners = new ArrayList<MessageReceived>();
-    private HashMap<String, Message>      _receivedMessages         = new HashMap<String, Message>();
-    private HashMap<String, Message>      _sentMessages             = new HashMap<String, Message>();
-    private AuthState                     _authState                = AuthState.CONNECTED;
+    private Thread  _replyListener;
+    private boolean _listeningForReplies;
 
     //auth details
     private String _magic;
     private String _username;
     private String _password;
-
-    //settings
-    public static boolean logHeartbeat = false;
-    public boolean isRealClient = true; //if this is a server client or an actual client talking to a server
-    public boolean keepMessages = true; //can disable this for memory usage but doing so will mean manual replies needed
 
     public Client() {
 
@@ -71,178 +46,30 @@ public class Client
         this.connect(socket);
     }
 
-    public void connect(Socket socket) throws Exception {
-        if(this._socket != null) {
-            throw new Exception("Already connected");
-        }
-
-        this._socket = socket;
-        this._socket.setKeepAlive(true);
-        this._inputStream = this._socket.getInputStream();
-        this._writer = new OutputStreamWriter(this._socket.getOutputStream());
-        this._reader = new BufferedReader(new InputStreamReader(this._inputStream));
-
-        this._listenForReplies(); //the server handles its own replies all on one thread not one thread per client
-        this._startHeart();
-    }
-
-    public Collection<Message> getRecivedMessages() {
-        return this._receivedMessages.values();
-    }
-
-    public Collection<Message> getSentMessages() {
-        return this._sentMessages.values();
-    }
-
-    public Message getReceivedMessage(String id) {
-        return this._receivedMessages.get(id);
-    }
-
-    public Message getSentMessage(String id) {
-        return this._sentMessages.get(id);
-    }
-
-    public Socket getSocket() {
-        return this._socket;
-    }
-
-    public AuthState getAuthState() {
-        return this._authState;
-    }
-
-    public void setAuthState(AuthState state) {
-        for(AuthStateChanged listener : this._authStateListeners) {
-            listener.onAuthStateChanged(this.getAuthState(), state, this);
-        }
-
-        Debugger.log(this._getDebuggerCategory(), "Auth state changed from " + this.getAuthState() + " to " + state + " for " + this._socket.getInetAddress().toString());
-        this._authState = state;
-    }
-
-    public void onDisconnect(DisconnectListener listener) {
-        this._disconnectListeners.add(listener);
-    }
-
-    public void onAuthStateChange(AuthStateChanged listener) {
-        this._authStateListeners.add(listener);
-    }
-
-    public void onMessageReceived(MessageReceived listener) {
-        this._messageReceivedListeners.add(listener);
-    }
-
-    public boolean isStopped() {
-        return this._closed;
-    }
-
-    public boolean isMessageWaiting() throws Exception {
-        return this._inputStream.available() > 0;
-    }
-
-    public void sendMessage(Message msg) throws Exception {
-        if(!this.isReady()) {
-            throw new IOException("Client not ready to send messages");
-        }
-        else if(this.keepMessages) {
-            msg.generateId(this._sentMessages); //generate an id for reply detection
-            this._sentMessages.put(msg.getId(), msg);
-        }
-
-        if(Client.logHeartbeat || !ServerOptions.HEART_BEAT.equals(msg.request)) {
-            Debugger.log(this._getDebuggerCategory(), "Sending message " + msg.toString());
-        }
-        this._writer.write(msg.toString() + "\n");
-        this._writer.flush();
-    }
-
-    public Message getMessage() throws Exception {
-        if(!this.isReady()) {
-            throw new IOException("Client not ready to get messages");
-        }
-
-        String line = this._reader.readLine();
-
-        if(line == null) {
-            throw new Exception("Null message received");
-        }
-
-        try {
-            Message message = Message.fromJson(line, this);
-
-            if(Client.logHeartbeat || !ServerOptions.HEART_BEAT.equals(message.request)) {
-                Debugger.log(this._getDebuggerCategory(), "Got message " + line);
-            }
-
-            return message;
-        }
-        catch(JsonSyntaxException e) {
-            Debugger.log(this._getDebuggerCategory(), "Got message " + line);
-            throw new InvalidMessageException("JSON parsing failed: " + e.getMessage());
-        }
-    }
-
-    public void handleMessage(Message message) throws Exception {
-        if (keepMessages) {
-            _receivedMessages.put(message.getId(), message);
-            message.loadResponseTo(_sentMessages);
-
-            if(message.getResponseTo() != null) {
-                message.getResponseTo().triggerReplyEvents(message);
-            }
-        }
-
-        for (MessageReceived listener : _messageReceivedListeners) {
-            listener.onMessageReceived(Client.this, message);
-        }
-    }
-
     public boolean isListeningForReplies() {
         return this._listeningForReplies;
     }
 
-    public boolean isReady() {
-        return !this._closed && this._socket != null && !this._socket.isClosed() && this._socket.isConnected();
+    @Override
+    public void connect(Socket socket) throws Exception {
+        super.connect(socket);
+        this._listenForReplies(); //the server handles its own replies all on one thread not one thread per client
+        this._startHeart();
     }
 
+    @Override
     public void disconnect() {
-        this._closed = true;
-
-        if(this._replyListener != null && this._replyListener.isAlive()) {
+        if (this._replyListener != null && this._replyListener.isAlive()) {
             this._replyListener.interrupt();
             this._replyListener = null;
         }
 
-        if(this._heartThread != null && this._heartThread.isAlive()) {
+        if (this._heartThread != null && this._heartThread.isAlive()) {
             this._heartThread.interrupt();
             this._heartThread = null;
         }
 
-        String boundAddress = this._socket.getInetAddress().getHostAddress();
-
-        try {
-            if(this._reader != null) {
-                this._reader.close();
-            }
-
-            if(this._writer != null) {
-                this._writer.close();
-            }
-
-            if(this._socket != null) {
-                this._socket.close();
-            }
-        }
-        catch(Exception e) {
-            Debugger.log(this._getDebuggerCategory(), "Failed to stop reader / writer / socket: " + e.toString());
-        }
-
-        this._socket = null;
-
-        for(DisconnectListener listener : this._disconnectListeners) {
-            listener.onDisconnect(this);
-        }
-
-        Debugger.log(this._getDebuggerCategory(), "Client " + boundAddress + " disconnected");
+        super.disconnect();
     }
 
     protected void _startHeart() {
@@ -281,7 +108,7 @@ public class Client
     }
 
     protected void _listenForReplies() {
-        if(!this.isRealClient || this._listeningForReplies || !this.isReady()) {
+        if(this._listeningForReplies || !this.isReady()) {
             return;
         }
 
@@ -305,7 +132,7 @@ public class Client
 
                         /* Handle the message */
                         if(Client.this.getAuthState() != AuthState.ACCEPTED) {
-                            Client.this._handleSpecialMessage(message);
+                            Client.this._handleAuth(message);
                         }
                         else {
                             Client.this.handleMessage(message);
@@ -327,7 +154,7 @@ public class Client
         this._replyListener.start();
     }
 
-    protected void _handleSpecialMessage(Message message) throws Exception {
+    protected void _handleAuth(Message message) throws Exception {
         //handling special server commands
         if (ServerOptions.REQUEST_MAGIC.equals(message.request)) { //sending magic
             if (Client.this._magic == null || Client.this._magic.trim().equals("")) {
@@ -355,9 +182,5 @@ public class Client
         else if (message.success != null && !message.success && getAuthState() != AuthState.ACCEPTED) { //not authed and reply from server
             throw new AuthException("Authentication failed: " + message.request);
         }
-    }
-
-    protected String _getDebuggerCategory() {
-        return this.isRealClient ? "Client" : "Server-Client";
     }
 }
