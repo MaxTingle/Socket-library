@@ -99,6 +99,16 @@ public class Message
         this._client.sendMessage(message);
     }
 
+    @Override
+    public Message clone() {
+        Message clone = new Message(this.request, this.params);
+        clone._responseToMessage = this._responseToMessage;
+        clone._replyListeners = this._replyListeners;
+        clone._responseToId = this._responseToId;
+        clone._client = this._client;
+        return clone;
+    }
+
     public String toString() {
         return Message._jsonParser.toJson(new SerializableMessage(this));
     }
