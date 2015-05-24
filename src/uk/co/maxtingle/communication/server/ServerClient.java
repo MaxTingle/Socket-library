@@ -3,6 +3,8 @@ package uk.co.maxtingle.communication.server;
 import uk.co.maxtingle.communication.common.AuthState;
 import uk.co.maxtingle.communication.common.BaseClient;
 import uk.co.maxtingle.communication.common.Message;
+import uk.co.maxtingle.communication.common.events.AuthStateChanged;
+import uk.co.maxtingle.communication.common.events.DisconnectListener;
 import uk.co.maxtingle.communication.debug.Debugger;
 
 import java.net.Socket;
@@ -33,6 +35,10 @@ public class ServerClient extends BaseClient
 
     @Override
     public void disconnect() {
+        for(DisconnectListener listener : this._server._disconnectListeners) {
+            listener.onDisconnect(this);
+        }
+
         super.disconnect();
 
         if(this._server._clients.indexOf(this) == -1) {
@@ -97,4 +103,15 @@ public class ServerClient extends BaseClient
             }
         }
     }
+
+    @Override
+    public void setAuthState(AuthState state) {
+        for(AuthStateChanged listener : this._server._authStateChangedListeners) {
+            listener.onAuthStateChanged(this.getAuthState(), state, this);
+        }
+
+        super.setAuthState(state);
+    }
+
+
 }

@@ -2,6 +2,8 @@ package uk.co.maxtingle.communication.server;
 
 import uk.co.maxtingle.communication.common.AuthState;
 import uk.co.maxtingle.communication.common.Message;
+import uk.co.maxtingle.communication.common.events.AuthStateChanged;
+import uk.co.maxtingle.communication.common.events.DisconnectListener;
 import uk.co.maxtingle.communication.common.events.MessageReceived;
 import uk.co.maxtingle.communication.common.exception.AuthException;
 import uk.co.maxtingle.communication.common.exception.InvalidMessageException;
@@ -17,8 +19,10 @@ import java.util.ArrayList;
 public class Server
 {
     protected ServerOptions _options;
-    protected ArrayList<ServerClient>    _clients                  = new ArrayList<ServerClient>();
-    protected ArrayList<MessageReceived> _messageReceivedListeners = new ArrayList<MessageReceived>();
+    protected ArrayList<ServerClient>       _clients                  = new ArrayList<ServerClient>();
+    protected ArrayList<MessageReceived>    _messageReceivedListeners = new ArrayList<MessageReceived>();
+    ArrayList<AuthStateChanged>   _authStateChangedListeners = new ArrayList<AuthStateChanged>();
+    ArrayList<DisconnectListener> _disconnectListeners = new ArrayList<DisconnectListener>();
 
     private ServerSocket  _listener;
     private Thread        _clientListenerThread;
@@ -55,6 +59,14 @@ public class Server
 
     public void onMessageReceived(MessageReceived listener) {
         this._messageReceivedListeners.add(listener);
+    }
+
+    public void onClientAuthStateChanged(AuthStateChanged listener) {
+        this._authStateChangedListeners.add(listener);
+    }
+
+    public void onClientDisconnect(DisconnectListener listener) {
+        this._disconnectListeners.add(listener);
     }
 
     public void setDefaultAuthHandler() {
@@ -270,8 +282,8 @@ public class Server
 
                 while (isReady()) {
                     try {
-                        for(int i = _clients.size() - 1; i != -1; i--) { //will be dynamically removing from list
-                            ServerClient client = _clients.get(i);
+                        for(int i = Server.this._clients.size() - 1; i != -1; i--) { //will be dynamically removing from list
+                            ServerClient client = Server.this._clients.get(i);
 
                             if(client == null) {
                                 continue;
