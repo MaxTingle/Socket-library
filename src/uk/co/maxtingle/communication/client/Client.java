@@ -104,6 +104,7 @@ public class Client extends BaseClient
                 }
             }
         });
+        this._heartThread.setName("Client heart");
         this._heartThread.start();
     }
 
@@ -151,6 +152,7 @@ public class Client extends BaseClient
                 Client.this._listeningForReplies = false;
             }
         });
+        this._replyListener.setName("Reply listener");
         this._replyListener.start();
     }
 

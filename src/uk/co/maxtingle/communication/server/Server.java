@@ -222,6 +222,7 @@ public class Server
                 }
             }
         });
+        this._clientListenerThread.setName("Client listener");
         this._clientListenerThread.start();
     }
 
@@ -266,6 +267,7 @@ public class Server
                 }
             }
         });
+        this._heartThread.setName("Server heart");
         this._heartThread.start();
     }
 
@@ -344,6 +346,7 @@ public class Server
                 }
             }
         });
+        this._messageListenerThread.setName("Message listener");
         this._messageListenerThread.start();
     }
 }
