@@ -1,5 +1,6 @@
 package uk.co.maxtingle.communication.client;
 
+import com.sun.istack.internal.NotNull;
 import uk.co.maxtingle.communication.common.AuthState;
 import uk.co.maxtingle.communication.common.BaseClient;
 import uk.co.maxtingle.communication.common.Message;
@@ -11,6 +12,11 @@ import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * The "client side" in the connection between
+ * a client and a server. This is the class that
+ * represents the client
+ */
 public class Client extends BaseClient
 {
     private Thread  _heartThread;
@@ -22,23 +28,68 @@ public class Client extends BaseClient
     private String _username;
     private String _password;
 
+    /**
+     * Creates a new client which you can
+     * manually connect to a socket after setting
+     * up extra options or listeners, using the connect method
+     */
     public Client() {
 
     }
 
+    /**
+     * Creates a new client and connects to the
+     * given socket & then contacts the server
+     * immediately
+     *
+     * @param socket   The socket to connect to
+     */
     public Client(Socket socket) throws Exception {
         this(socket, null, null, null);
     }
 
-    public Client(Socket socket, String sendMagic) throws Exception {
-        this(socket, sendMagic, null, null);
+    /**
+     * Creates a new client and connects to the
+     * given socket & then contacts the server
+     * immediately with the authentication information
+     * of the magic to confirm this is the type of
+     * client the server wants
+     *
+     * @param socket The socket to connect to
+     * @param magic  The magic to send to the server if it requests it
+     */
+    public Client(Socket socket, String magic) throws Exception {
+        this(socket, magic, null, null);
     }
 
-    public Client(Socket socket, String username, String password) throws Exception {
+    /**
+     * Creates a new client and connects to the
+     * given socket & then contacts the server
+     * immediately with the authentication information
+     * of the username & password to confirm the user
+     * has access
+     *
+     * @param socket   The socket to connect to
+     * @param username The username to send to the server on auth request
+     * @param password The password associated with the username
+     */
+    public Client(@NotNull Socket socket, @NotNull String username, @NotNull String password) throws Exception {
         this(socket, null, username, password);
     }
 
-    public Client(Socket socket, String sendMagic, String username, String password) throws Exception {
+    /**
+     * Creates a new client and connects to the
+     * given socket & then contacts the server
+     * immediately with the authentication information
+     * of the username & password to confirm the user
+     * has access and the magic to confirm this is the
+     * correct type of client
+     *
+     * @param socket   The socket to connect to
+     * @param username The username to send to the server on auth request
+     * @param password The password associated with the username
+     */
+    public Client(@NotNull Socket socket, @NotNull String sendMagic, @NotNull String username, @NotNull String password) throws Exception {
         this._username = username;
         this._password = password;
         this._magic = sendMagic;
@@ -46,17 +97,34 @@ public class Client extends BaseClient
         this.connect(socket);
     }
 
+    /**
+     * Gets whether or not the reply listener is currently running
+     *
+     * @return Whether or not the client is listening for responses from the server
+     */
     public boolean isListeningForReplies() {
         return this._listeningForReplies;
     }
 
+    /**
+     * Associates a socket with the client and
+     * sets all the socket options and sets up
+     * all the reader / writers. Also starts
+     * the reply listener and heart of the client
+     *
+     * @param socket The socket to bind to
+     */
     @Override
-    public void connect(Socket socket) throws Exception {
+    public void connect(@NotNull Socket socket) throws Exception {
         super.connect(socket);
         this._listenForReplies(); //the server handles its own replies all on one thread not one thread per client
         this._startHeart();
     }
 
+    /**
+     * "Closes down" the client, shuts down all the readers, writers
+     * and the bound socket then calls all the disconnect listeners
+     */
     @Override
     public void disconnect() {
         if (this._replyListener != null && this._replyListener.isAlive()) {

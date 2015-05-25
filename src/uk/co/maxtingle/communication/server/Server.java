@@ -1,5 +1,6 @@
 package uk.co.maxtingle.communication.server;
 
+import com.sun.istack.internal.NotNull;
 import uk.co.maxtingle.communication.common.AuthState;
 import uk.co.maxtingle.communication.common.Message;
 import uk.co.maxtingle.communication.common.events.AuthStateChanged;
@@ -30,16 +31,36 @@ public class Server
     private Thread        _heartThread;
     private boolean _closing = false;
 
+    /**
+     * Creates a new server and server the options to the default
+     * ServerOptions values. Then sets the default authentication handler
+     */
     public Server() {
         this._options = new ServerOptions() {};
+        this.setDefaultAuthHandler();
     }
 
-    public Server(int serverPort) {
+    /**
+     * Creates a new server and server the server options to the
+     * default ServerOptions values but overrides the port to
+     * the port specified. Then sets the default authentication handler
+     *
+     * @param serverPort The port to listen on
+     */
+    public Server(@NotNull int serverPort) {
         this._options = new ServerOptions();
         this._options.port = serverPort;
         this.setDefaultAuthHandler();
     }
 
+    /**
+     * Creates a new server with the specified ServerOptions
+     * and checks that they are valid then sets the default
+     * authentication handler
+     *
+     * @param options The options to configure the server with
+     * @throws Exception Invalid options values
+     */
     public Server(ServerOptions options) throws Exception {
         if (options.useMagic && (options.expectedMagic == null || options.expectedMagic.trim().equals(""))) {
             throw new Exception("Cannot use expectedMagic without setting expected expectedMagic value");
@@ -49,37 +70,84 @@ public class Server
         this.setDefaultAuthHandler();
     }
 
+    /**
+     * Checks whether or not the server is ready,
+     * not shutdown and has a bound listener
+     *
+     * @return Whether or not the server is operational
+     */
     public boolean isReady() {
         return !this._closing && this._listener != null && this._listener.isBound() && !this._listener.isClosed();
     }
 
+    /**
+     * Gets all the clients currently connected to the server.
+     * Take note that some of the clients could be in between
+     * heartbeats but disconnected so IO Operations might
+     * fail on them
+     *
+     * @return The clients connected to the server
+     */
     public ArrayList<ServerClient> getClients() {
         return this._clients;
     }
 
-    public void onMessageReceived(MessageReceived listener) {
+    /**
+     * Adds a MessageReceived listener to the list
+     * of events to fire when the server receives a message
+     * from a client
+     *
+     * @param listener The listener to add
+     */
+    public void onMessageReceived(@NotNull MessageReceived listener) {
         this._messageReceivedListeners.add(listener);
     }
 
-    public void onClientAuthStateChanged(AuthStateChanged listener) {
+    /**
+     * Adds an AuthStateChanged listener to the list
+     * of events to fire when the server changes the auth
+     * state of a client
+     *
+     * @param listener The listener to add
+     */
+    public void onClientAuthStateChanged(@NotNull AuthStateChanged listener) {
         this._authStateChangedListeners.add(listener);
     }
 
+    /**
+     * Adds a DisconnectListener to the list of events to fire
+     * when the server disconnects a client or a heartbeat
+     * fails and the client disconnects themselves
+     *
+     * @param listener The listener to add
+     */
     public void onClientDisconnect(DisconnectListener listener) {
         this._disconnectListeners.add(listener);
     }
 
+    /**
+     * Sets the auth handler to a new instance of the
+     * BasicAuthHandler
+     */
     public void setDefaultAuthHandler() {
         this.setAuthHandler(new BasicAuthHandler());
     }
 
-    public void setAuthHandler(final IAuthHandler handler) {
+    /**
+     * Sets the auth handler to use for all authentication
+     * to the server, this means magic and credential based
+     * authentication, whether or not the methods will be used
+     * is down to the ServerOptions
+     *
+     * @param handler The handler to use
+     */
+    public void setAuthHandler(@NotNull final IAuthHandler handler) {
         this._options.usedAuthHandler = handler;
         this._options.magicAuthHandler = new IMagicAuth()
         {
             @Override
             public boolean authMagic(String magic, ServerClient client, Message message, ServerOptions options) throws Exception {
-            return handler.authMagic(magic, client, message, options);
+                return handler.authMagic(magic, client, message, options);
             }
         };
 
@@ -87,38 +155,51 @@ public class Server
         {
             @Override
             public boolean authCredentials(String username, String password, ServerClient client, Message message, ServerOptions options) throws Exception {
-            return handler.authCredentials(username, password, client, message, options);
+                return handler.authCredentials(username, password, client, message, options);
             }
         };
     }
 
-    public void setMagicAuthHandler(final IMagicAuth handler) {
+    /**
+     * Sets the magic authentication handler to use when a client
+     * attempts to connect to the server, whether or not this is
+     * used is determined by the ServerOptions
+     *
+     * @param handler The handler to use
+     */
+    public void setMagicAuthHandler(@NotNull final IMagicAuth handler) {
         this._options.magicAuthHandler = handler;
     }
 
+    /**
+     * Sets the credential authentication handler to use when a client
+     * attempts to connect to the server and has verified their magic
+     * if the server is using it, whether or not this is used is
+     * determined by the ServerOptions
+     *
+     * @param handler The handler to use
+     */
     public void setCredentialAuthHandler(final ICredentialAuth handler) {
         this._options.credentialAuthHandler = handler;
     }
 
+    /**
+     * Gets all the clients which have been authenticated and set
+     * to the state ACCEPTED
+     *
+     * @return The clients which have been authenticated
+     */
     public ArrayList<ServerClient> getAcceptedClients() {
-        if(!this._options.useMagic && !this._options.useCredentials) {
-            return this._clients;
-        }
-
-        ArrayList<ServerClient> matchingClients = new ArrayList<ServerClient>();
-
-        for(ServerClient client : this._clients) {
-            if((this._options.useCredentials || (!this._options.useCredentials && this._options.useMagic))
-               && client.getAuthState() == AuthState.ACCEPTED)
-            {
-                matchingClients.add(client);
-            }
-        }
-
-        return matchingClients;
+        return this.getClientsInState(AuthState.ACCEPTED);
     }
 
-    public ArrayList<ServerClient> getClientsInState(AuthState state) {
+    /**
+     * Gets all the clients which are in a certain state
+     *
+     * @param state The state to find clients that are in
+     * @return The clients in the state given
+     */
+    public ArrayList<ServerClient> getClientsInState(@NotNull AuthState state) {
         ArrayList<ServerClient> matches = new ArrayList<ServerClient>();
 
         for(ServerClient client : this._clients) {
@@ -130,6 +211,15 @@ public class Server
         return matches;
     }
 
+    /**
+     * Starts the server socket, binds the server listener,
+     * starts listening for messages from clients,
+     * starts listening for new clients attempting to connect
+     * and starts the heartbeat thread to make sure clients
+     * are still connected when they say they are.
+     *
+     * @throws Exception Failed to start the server
+     */
     public void start() throws Exception {
         this._listener = new ServerSocket(this._options.port);
 
@@ -139,6 +229,18 @@ public class Server
         this._startHeart();
     }
 
+    /**
+     * Gracefully stops the server by allowing
+     * threads to stop naturally and then
+     * interrupting them if they are sleeping
+     * but ignoring the error. First stops
+     * listener for more clients, then stops sending
+     * heart beat requests, then stops listening for messages
+     * and finally disconnects all clients which will cause
+     * the disconnect listener to fire for each client
+     *
+     * @throws Exception A client failed to disconnect or interrupting a thread failed
+     */
     public void stop() throws Exception {
         Debugger.log("Server", "Shutting down");
         this._closing = true;

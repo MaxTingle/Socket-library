@@ -1,5 +1,6 @@
 package uk.co.maxtingle.communication.server;
 
+import com.sun.istack.internal.NotNull;
 import uk.co.maxtingle.communication.common.AuthState;
 import uk.co.maxtingle.communication.common.BaseClient;
 import uk.co.maxtingle.communication.common.Message;
@@ -10,11 +11,22 @@ import uk.co.maxtingle.communication.debug.Debugger;
 import java.net.Socket;
 import java.util.Map;
 
+/**
+ * The server's representation of a client
+ */
 public class ServerClient extends BaseClient
 {
     private Server _server;
 
-    public ServerClient(Socket socket, Server server) throws Exception {
+    /**
+     * Creates a new client, connects it to the
+     * socket and server the server the ServerClient
+     * is connected to
+     *
+     * @param socket The socket to connect to
+     * @param server The server that this ServerClient is connected to
+     */
+    public ServerClient(@NotNull Socket socket, @NotNull Server server) throws Exception {
         this.connect(socket);
         this._server = server;
 
@@ -33,6 +45,10 @@ public class ServerClient extends BaseClient
         }
     }
 
+    /**
+     * "Closes down" the client, shuts down all the readers, writers
+     * and the bound socket then calls all the disconnect listeners
+     */
     @Override
     public void disconnect() {
         for(DisconnectListener listener : this._server._disconnectListeners) {
@@ -49,7 +65,23 @@ public class ServerClient extends BaseClient
         }
     }
 
-    public void handleAuthMessage(Message message) throws Exception {
+    /**
+     * Sets the auth state of the client and
+     * triggers all the auth state changed
+     * listeners
+     *
+     * @param state The new auth state
+     */
+    @Override
+    public void setAuthState(AuthState state) {
+        for(AuthStateChanged listener : this._server._authStateChangedListeners) {
+            listener.onAuthStateChanged(this.getAuthState(), state, this);
+        }
+
+        super.setAuthState(state);
+    }
+
+    void handleAuthMessage(Message message) throws Exception {
         if(message.params.length != 1) { //not got any params
             throw new Exception("Incorrect number of params");
         }
@@ -103,15 +135,4 @@ public class ServerClient extends BaseClient
             }
         }
     }
-
-    @Override
-    public void setAuthState(AuthState state) {
-        for(AuthStateChanged listener : this._server._authStateChangedListeners) {
-            listener.onAuthStateChanged(this.getAuthState(), state, this);
-        }
-
-        super.setAuthState(state);
-    }
-
-
 }
